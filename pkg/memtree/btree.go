@@ -1,4 +1,4 @@
-package indexer
+package memtree
 
 import (
 	"strings"
@@ -9,54 +9,53 @@ type color bool
 const red, black color = true, false
 
 type RBTree struct {
-	Root *node
+	Root *Node
 }
 
-type node struct {
-	left   *node
-	right  *node
-	parent *node
-	key    string
-	// Byte offset from the start of the sorted string table to where the value is stored
-	offset    int
+type Node struct {
+	Left      *Node
+	Right     *Node
+	parent    *Node
+	Key       string
+	Value     []byte
 	nodecolor color
 }
 
-func (n node) string() string {
-	return n.key
+func (n Node) string() string {
+	return n.Key
 
 }
 
 // When writing a entry, in addition to storing it to disk, index the location of the key
-func (t *RBTree) Insert(key string, offset int) {
+func (t *RBTree) Insert(key string, value []byte) {
 
 	if t.Root == nil {
-		t.Root = &node{
-			key:       key,
-			offset:    offset,
+		t.Root = &Node{
+			Key:       key,
 			nodecolor: black,
+			Value:     value,
 		}
 		return
 	}
 
-	newNode := &node{
-		key:       key,
-		offset:    offset,
+	newNode := &Node{
+		Key:       key,
+		Value:     value,
 		nodecolor: red,
 	}
 	n := t.Root
-	var parent *node
+	var parent *Node
 
 	loop := true
 	for loop {
 		parent = n
-		switch strings.Compare(key, n.key) {
+		switch strings.Compare(key, n.Key) {
 
 		case -1:
-			if n.left != nil {
-				n = n.left
+			if n.Left != nil {
+				n = n.Left
 			} else {
-				n.left = newNode
+				n.Left = newNode
 				loop = false
 			}
 
@@ -65,10 +64,10 @@ func (t *RBTree) Insert(key string, offset int) {
 			// the key has been updated TODO
 			return
 		case 1:
-			if n.right != nil {
-				n = n.right
+			if n.Right != nil {
+				n = n.Right
 			} else {
-				n.right = newNode
+				n.Right = newNode
 				loop = false
 			}
 			break
@@ -90,7 +89,7 @@ func (t *RBTree) Insert(key string, offset int) {
 // 1 - uncle is red
 // 2 - uncle is black and triangle
 // 3 - uncle is black and line
-func (t *RBTree) validate(n *node) {
+func (t *RBTree) validate(n *Node) {
 
 	if n == t.Root || n.parent.nodecolor == black {
 		return
@@ -98,17 +97,17 @@ func (t *RBTree) validate(n *node) {
 
 	x := n
 	for x != t.Root && x.parent.nodecolor == red {
-		if x.parent == x.parent.parent.left {
+		if x.parent == x.parent.parent.Left {
 
-			if x.parent.parent.right != nil && x.parent.parent.right.nodecolor == red {
+			if x.parent.parent.Right != nil && x.parent.parent.Right.nodecolor == red {
 				x.parent.nodecolor = black
 				x.parent.parent.nodecolor = red
-				x.parent.parent.right.nodecolor = black
+				x.parent.parent.Right.nodecolor = black
 				x = x.parent.parent
 			} else {
 
 				// case 2
-				if x == x.parent.right {
+				if x == x.parent.Right {
 					x = x.parent
 					t.rotateleft(x)
 				}
@@ -119,7 +118,7 @@ func (t *RBTree) validate(n *node) {
 				t.rotateright(x.parent.parent)
 			}
 		} else {
-			y := x.parent.parent.left
+			y := x.parent.parent.Left
 
 			if y.nodecolor == red {
 				x.parent.nodecolor = black
@@ -128,7 +127,7 @@ func (t *RBTree) validate(n *node) {
 				x = x.parent.parent
 			} else {
 
-				if x == x.parent.left {
+				if x == x.parent.Left {
 					x = x.parent
 					t.rotateright(x)
 				}
@@ -142,44 +141,44 @@ func (t *RBTree) validate(n *node) {
 	}
 }
 
-func (t *RBTree) rotateleft(n *node) {
+func (t *RBTree) rotateleft(n *Node) {
 
-	y := n.right
-	n.right = y.left
+	y := n.Right
+	n.Right = y.Left
 
-	if y.left != nil {
-		y.left.parent = n
+	if y.Left != nil {
+		y.Left.parent = n
 	}
 
 	y.parent = n.parent
 	if n.parent == nil {
 		t.Root = y
-	} else if n == n.parent.left {
-		n.parent.left = y
+	} else if n == n.parent.Left {
+		n.parent.Left = y
 	} else {
-		n.parent.right = y
+		n.parent.Right = y
 	}
 
-	y.left = n
+	y.Left = n
 	n.parent = y
 
 }
 
-func (t *RBTree) rotateright(n *node) {
+func (t *RBTree) rotateright(n *Node) {
 
-	y := n.left
-	n.left = y.right
+	y := n.Left
+	n.Left = y.Right
 
 	y.parent = n.parent
 
 	if n.parent == nil {
 		t.Root = y
-	} else if n == n.parent.left {
-		n.parent.left = y
+	} else if n == n.parent.Left {
+		n.parent.Left = y
 	} else {
-		n.parent.right = y
+		n.parent.Right = y
 	}
 
-	y.right = n
+	y.Right = n
 	n.parent = y
 }

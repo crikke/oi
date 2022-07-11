@@ -1,4 +1,4 @@
-package indexer
+package memtree
 
 import (
 	"testing"
@@ -42,8 +42,8 @@ func TestRBInsert(t *testing.T) {
 			//    aa  nil
 			// nil  bb
 			//
-			//      aa
-			//    bb   cc
+			//      bb
+			//    aa   cc
 			name: "test case 2",
 			keys: []string{"cc", "aa", "bb"},
 			expect: []mocknode{
@@ -59,7 +59,7 @@ func TestRBInsert(t *testing.T) {
 			rbt := &RBTree{}
 
 			for _, k := range test.keys {
-				rbt.Insert(k, 0)
+				rbt.Insert(k, nil)
 			}
 
 			i := 0
