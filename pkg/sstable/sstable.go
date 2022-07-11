@@ -9,10 +9,10 @@ import (
 
 // A Sorted string table cosist of an index file (.idx) and the corresponding data (.db)
 // The SSTable is immutable and can only be read from.
-
-type index struct {
-	length  int
+// TODO: Create Summary file
+type sstable struct {
 	entries []entry
+	length  uint32
 }
 
 // size of each entry should be:
@@ -26,7 +26,7 @@ type entry struct {
 
 func createIndex(iw io.Writer, db io.Writer, m memtree.RBTree) {
 
-	s := &index{}
+	s := &sstable{}
 	stack := make([]*memtree.Node, 0)
 
 	current := m.Root
@@ -46,29 +46,34 @@ func createIndex(iw io.Writer, db io.Writer, m memtree.RBTree) {
 	}
 }
 
-func (s *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
-	/* l, err := db.Write(n.Value)
-	s.length += l
-	e := entry{
-		entrySize: l,
-		position:  s.length,
-		key:       bytes(n.Key),
-		keyLength: len(n.Key),
+func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
+	l, err := db.Write(n.Value)
+	if err != nil {
+		return err
 	}
+	// write \x00 NULL to mark end of data
+	_, err = db.Write([]byte("\x00"))
 
 	if err != nil {
 		return err
 	}
 
-	iw.Write()
+	e := entry{
+		position:  s.length,
+		key:       []byte(n.Key),
+		keyLength: uint16(len(n.Key)),
+	}
 
-	return nil
-	*/
+	if err = encodeEntry(iw, e); err != nil {
+		return err
+	}
+
+	// increase size of sstable to get next entry position, add 1 extra byte for the null escape character
+	s.length += uint32(l + 1)
+
 	return nil
 }
 
-// entries are encoded in the following way:
-// keyLength: 16bit
 func encodeEntry(iw io.Writer, e entry) error {
 
 	kl := make([]byte, 2)
