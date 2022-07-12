@@ -1,8 +1,11 @@
 package sstable
 
 import (
+	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"io"
+	"os"
 
 	"github.com/crikke/oi/pkg/memtree"
 )
@@ -22,6 +25,30 @@ type entry struct {
 	key       []byte
 	keyLength uint16
 	position  uint32
+}
+
+// calculate the checksum for the file, this will be stored somewhere and is used to compare the index & data file
+// if the checksum does not match, the SSTable will be rebuilt from the CommitLog
+func checksum(r io.Reader) ([]byte, error) {
+	hash := md5.New()
+
+	_, err := io.Copy(hash, r)
+
+	if err != nil {
+		return nil, err
+	}
+	return hash.Sum(nil), nil
+}
+
+// creates a new SSTable at given path from a RBTree
+func New(fullname string, m memtree.RBTree) error {
+
+	// assert that the files does not exist
+
+	if _, err := os.Stat(fullname); errors.Is(err, os.ErrNotExist) {
+	}
+
+	return nil
 }
 
 func createIndex(iw io.Writer, db io.Writer, m memtree.RBTree) {
