@@ -120,7 +120,7 @@ func (t *RBTree) validate(n *Node) {
 		} else {
 			y := x.parent.parent.Left
 
-			if y.nodecolor == red {
+			if y != nil && y.nodecolor == red {
 				x.parent.nodecolor = black
 				x.parent.parent.nodecolor = red
 				y.nodecolor = black

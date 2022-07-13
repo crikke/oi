@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -41,17 +42,45 @@ func checksum(r io.Reader) ([]byte, error) {
 }
 
 // creates a new SSTable at given path from a RBTree
-func New(fullname string, m memtree.RBTree) error {
+func New(name string, m memtree.RBTree) error {
 
 	// assert that the files does not exist
-
-	if _, err := os.Stat(fullname); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(fmt.Sprintf("%s.data", name)); !errors.Is(err, os.ErrNotExist) {
+		return os.ErrExist
 	}
+
+	if _, err := os.Stat(fmt.Sprintf("%s.idx", name)); !errors.Is(err, os.ErrNotExist) {
+		return os.ErrExist
+	}
+
+	if _, err := os.Stat(fmt.Sprintf("%s.summary", name)); !errors.Is(err, os.ErrNotExist) {
+		return os.ErrExist
+	}
+
+	data, err := os.Create(fmt.Sprintf("%s.data", name))
+	if err != nil {
+		return err
+	}
+	defer data.Close()
+
+	idx, err := os.Create(fmt.Sprintf("%s.idx", name))
+	if err != nil {
+		return err
+	}
+	// todo
+
+	//summary, err := os.Create(fmt.Sprintf("%s.summary", name))
+	// if err != nil {
+	//	return err
+	// }
+
+	createSSTable(idx, data, m)
 
 	return nil
 }
 
-func createIndex(iw io.Writer, db io.Writer, m memtree.RBTree) {
+// traverses the memtree and wrties the data to the files
+func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) {
 
 	s := &sstable{}
 	stack := make([]*memtree.Node, 0)
@@ -91,7 +120,7 @@ func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error
 		keyLength: uint16(len(n.Key)),
 	}
 
-	if err = encodeEntry(iw, e); err != nil {
+	if err = encodeIndexEntry(iw, e); err != nil {
 		return err
 	}
 
@@ -101,7 +130,7 @@ func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error
 	return nil
 }
 
-func encodeEntry(iw io.Writer, e entry) error {
+func encodeIndexEntry(iw io.Writer, e entry) error {
 
 	kl := make([]byte, 2)
 	pos := make([]byte, 4)
