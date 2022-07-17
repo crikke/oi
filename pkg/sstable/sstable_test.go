@@ -72,3 +72,22 @@ func TestCreateSSTableIndex(t *testing.T) {
 	assert.Equal(t, []byte("\x00"), data.Next(1))
 
 }
+
+func TestDecodeSSTable(t *testing.T) {
+
+	rbt := memtree.RBTree{}
+
+	// assert that entries are stored in order
+	rbt.Insert("bbb", []byte("222"))
+	rbt.Insert("aaa", []byte("111"))
+	rbt.Insert("ddd", []byte("444"))
+	rbt.Insert("ccc", []byte("333"))
+
+	iw := &bytes.Buffer{}
+	data := &bytes.Buffer{}
+
+	err := createSSTable(iw, data, rbt)
+	assert.NoError(t, err)
+
+	Get(nil, iw, data, []byte("aaa"))
+}

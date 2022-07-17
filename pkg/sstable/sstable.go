@@ -1,6 +1,8 @@
 package sstable
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
@@ -14,7 +16,7 @@ import (
 // A Sorted string table cosist of an index file (.idx) and the corresponding data (.db)
 // The SSTable is immutable and can only be read from.
 // TODO: Create Summary file
-type sstable struct {
+type index struct {
 	entries []entry
 	length  uint32
 }
@@ -82,7 +84,7 @@ func New(name string, m memtree.RBTree) error {
 // traverses the memtree and wrties the data to the files
 func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) error {
 
-	s := &sstable{}
+	s := &index{}
 	stack := make([]*memtree.Node, 0)
 
 	current := m.Root
@@ -110,8 +112,9 @@ func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) error {
 	return nil
 }
 
-func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
+func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
 	l, err := db.Write(n.Value)
+
 	if err != nil {
 		return err
 	}
@@ -123,7 +126,7 @@ func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error
 	}
 
 	e := entry{
-		position:  s.length,
+		position:  i.length,
 		key:       []byte(n.Key),
 		keyLength: uint16(len(n.Key)),
 	}
@@ -133,7 +136,7 @@ func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error
 	}
 
 	// increase size of sstable to get next entry position, add 1 extra byte for the null escape character
-	s.length += uint32(l + 1)
+	i.length += uint32(l + 1)
 
 	return nil
 }
@@ -158,4 +161,74 @@ func encodeIndexEntry(iw io.Writer, e entry) error {
 	}
 
 	return nil
+}
+
+func decodeEntry(idx io.Reader, e *entry) (int, error) {
+
+	kl := make([]byte, 2)
+	if _, err := idx.Read(kl); err != nil {
+		return 0, err
+	}
+
+	e.keyLength = binary.LittleEndian.Uint16(kl)
+	key := make([]byte, e.keyLength)
+
+	keyBytesRead, err := idx.Read(key)
+	if err != nil {
+		return 0, err
+	}
+
+	pos := make([]byte, 4)
+	if _, err := idx.Read(pos); err != nil {
+		return 0, err
+	}
+
+	e.key = key
+	e.position = binary.LittleEndian.Uint32(pos)
+
+	return 6 + keyBytesRead, nil
+}
+
+func Get(summary, idx, data io.Reader, key []byte) ([]byte, error) {
+	r := bufio.NewReader(idx)
+
+	pos, err := scan(idx, 0, r.Size(), key)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte{}, nil
+}
+
+func scan(idx io.Reader, start, length int, key []byte) (int32, error) {
+	r := bufio.NewReader(idx)
+
+	if _, err := r.Discard(start); err != nil {
+		return 0, err
+	}
+
+	loop := true
+	bytesRead := 0
+	for loop {
+
+		if bytesRead > length {
+			return 0, errors.New("not found")
+		}
+
+		e := &entry{}
+
+		n, err := decodeEntry(idx, e)
+		if err != nil {
+			return 0, err
+		}
+
+		bytesRead += n
+
+		if bytes.Equal(e.key, key) {
+			return e.position, nil
+		}
+	}
+
+	return 0, errors.New("not found")
 }
