@@ -45,5 +45,7 @@ func TestCreateSSTable(t *testing.T) {
 	iw := &bytes.Buffer{}
 	data := &bytes.Buffer{}
 
-	createSSTable(iw, data, rbt)
+	err := createSSTable(iw, data, rbt)
+	assert.NoError(t, err)
+
 }

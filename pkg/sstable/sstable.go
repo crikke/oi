@@ -80,15 +80,19 @@ func New(name string, m memtree.RBTree) error {
 }
 
 // traverses the memtree and wrties the data to the files
-func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) {
+func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) error {
 
 	s := &sstable{}
 	stack := make([]*memtree.Node, 0)
 
 	current := m.Root
 	for len(stack) > 0 || current != nil {
-		stack = append(stack, current)
-		current = current.Left
+
+		if current != nil {
+
+			stack = append(stack, current)
+			current = current.Left
+		}
 
 		if current == nil {
 			// pop:w
@@ -96,10 +100,14 @@ func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) {
 			el := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 
-			s.processNode(iw, db, el)
+			if err := s.processNode(iw, db, el); err != nil {
+				return err
+			}
 			current = el.Right
 		}
 	}
+
+	return nil
 }
 
 func (s *sstable) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
@@ -138,9 +146,16 @@ func encodeIndexEntry(iw io.Writer, e entry) error {
 	binary.LittleEndian.PutUint16(kl, e.keyLength)
 	binary.LittleEndian.PutUint32(pos, e.position)
 
-	iw.Write(kl)
-	iw.Write(e.key)
-	iw.Write(pos)
+	if _, err := iw.Write(kl); err != nil {
+		return err
+	}
+
+	if _, err := iw.Write(e.key); err != nil {
+		return err
+	}
+	if _, err := iw.Write(pos); err != nil {
+		return err
+	}
 
 	return nil
 }
