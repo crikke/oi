@@ -53,23 +53,21 @@ func TestCreateSSTableIndex(t *testing.T) {
 	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 	assert.Equal(t, []byte("aaa"), iw.Next(3))
 	assert.Equal(t, []byte{0, 0, 0, 0}, iw.Next(4))
+	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 
 	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 	assert.Equal(t, []byte("bbb"), iw.Next(3))
-	assert.Equal(t, []byte{4, 0, 0, 0}, iw.Next(4))
+	assert.Equal(t, []byte{3, 0, 0, 0}, iw.Next(4))
+	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 
 	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 	assert.Equal(t, []byte("ccc"), iw.Next(3))
-	assert.Equal(t, []byte{8, 0, 0, 0}, iw.Next(4))
+	assert.Equal(t, []byte{6, 0, 0, 0}, iw.Next(4))
+	assert.Equal(t, []byte{3, 0}, iw.Next(2))
 
 	assert.Equal(t, []byte("111"), data.Next(3))
-	assert.Equal(t, []byte("\x00"), data.Next(1))
-
 	assert.Equal(t, []byte("222"), data.Next(3))
-	assert.Equal(t, []byte("\x00"), data.Next(1))
-
 	assert.Equal(t, []byte("333"), data.Next(3))
-	assert.Equal(t, []byte("\x00"), data.Next(1))
 
 }
 

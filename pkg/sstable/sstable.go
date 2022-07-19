@@ -13,6 +13,43 @@ import (
 	"github.com/crikke/oi/pkg/memtree"
 )
 
+type SSTable struct {
+	index   *os.File
+	data    *os.File
+	summary io.Reader
+}
+
+// opens a SSTable for reading
+// path is where sstable is stored. file ending must be omitted
+func Open(path string) (s *SSTable, err error) {
+
+	s = &SSTable{}
+
+	data, err := os.Open(fmt.Sprintf("%s.data", path))
+
+	if err != nil {
+		return nil, err
+	}
+
+	s.data = data
+
+	idx, err := os.Open(fmt.Sprintf("%s.idx", path))
+
+	if err != nil {
+		return nil, err
+	}
+
+	s.index = idx
+
+	return
+}
+
+func (s *SSTable) Close() {
+	s.index.Close()
+	s.data.Close()
+	s.data.Close()
+}
+
 // A Sorted string table cosist of an index file (.idx) and the corresponding data (.db)
 // The SSTable is immutable and can only be read from.
 // TODO: Create Summary file
@@ -25,9 +62,10 @@ type index struct {
 // 16bit (key length) + (key length * 8)  + 32bit(position)
 // key could be shorter than 16 bytes
 type entry struct {
-	key       []byte
-	keyLength uint16
-	position  uint32
+	key          []byte
+	keyLength    uint16
+	position     uint32
+	entityLength uint16
 }
 
 // calculate the checksum for the file, this will be stored somewhere and is used to compare the index & data file
@@ -118,25 +156,24 @@ func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
 	if err != nil {
 		return err
 	}
-	// write \x00 NULL to mark end of data
-	_, err = db.Write([]byte("\x00"))
 
 	if err != nil {
 		return err
 	}
 
 	e := entry{
-		position:  i.length,
-		key:       []byte(n.Key),
-		keyLength: uint16(len(n.Key)),
+		position:     i.length,
+		key:          []byte(n.Key),
+		keyLength:    uint16(len(n.Key)),
+		entityLength: uint16(l),
 	}
 
 	if err = encodeIndexEntry(iw, e); err != nil {
 		return err
 	}
 
-	// increase size of sstable to get next entry position, add 1 extra byte for the null escape character
-	i.length += uint32(l + 1)
+	// increase size of sstable to get next entry position
+	i.length += uint32(l)
 
 	return nil
 }
@@ -145,9 +182,11 @@ func encodeIndexEntry(iw io.Writer, e entry) error {
 
 	kl := make([]byte, 2)
 	pos := make([]byte, 4)
+	entityLength := make([]byte, 2)
 
 	binary.LittleEndian.PutUint16(kl, e.keyLength)
 	binary.LittleEndian.PutUint32(pos, e.position)
+	binary.LittleEndian.PutUint16(entityLength, e.entityLength)
 
 	if _, err := iw.Write(kl); err != nil {
 		return err
@@ -157,6 +196,10 @@ func encodeIndexEntry(iw io.Writer, e entry) error {
 		return err
 	}
 	if _, err := iw.Write(pos); err != nil {
+		return err
+	}
+
+	if _, err := iw.Write(entityLength); err != nil {
 		return err
 	}
 
@@ -189,46 +232,52 @@ func decodeEntry(idx io.Reader, e *entry) (int, error) {
 	return 6 + keyBytesRead, nil
 }
 
-func Get(summary, idx, data io.Reader, key []byte) ([]byte, error) {
-	r := bufio.NewReader(idx)
+func (s SSTable) Get(key []byte) ([]byte, error) {
 
-	pos, err := scan(idx, 0, r.Size(), key)
+	entry, err := s.scan(0, r.Size(), key)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return []byte{}, nil
-}
-
-func scan(idx io.Reader, start, length int, key []byte) (int32, error) {
-	r := bufio.NewReader(idx)
-
-	if _, err := r.Discard(start); err != nil {
-		return 0, err
+	val := make([]byte, entry.keyLength)
+	if _, err := data.ReadAt(val, int64(entry.position)); err != nil {
+		return nil, err
 	}
 
-	loop := true
+	return val, nil
+}
+
+// searches the index for key starting at offset.
+// It will continue search until end or bytes read > length, in which key does not exist
+func (s SSTable) scan(offset, length int, key []byte) (entry, error) {
+	r := bufio.NewReader(s.index)
+
+	s.index
+	if _, err := r.Discard(offset); err != nil {
+		return entry{}, err
+	}
+
 	bytesRead := 0
-	for loop {
+	for {
 
 		if bytesRead > length {
-			return 0, errors.New("not found")
+			break
 		}
 
 		e := &entry{}
 
 		n, err := decodeEntry(idx, e)
 		if err != nil {
-			return 0, err
+			return entry{}, err
 		}
 
 		bytesRead += n
 
 		if bytes.Equal(e.key, key) {
-			return e.position, nil
+			return *e, nil
 		}
 	}
 
-	return 0, errors.New("not found")
+	return entry{}, errors.New("not found")
 }
