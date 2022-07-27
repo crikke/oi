@@ -3,9 +3,12 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/crikke/oi/pkg/memtree"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -81,11 +84,32 @@ func TestDecodeSSTable(t *testing.T) {
 	rbt.Insert("ddd", []byte("444"))
 	rbt.Insert("ccc", []byte("333"))
 
-	iw := &bytes.Buffer{}
-	data := &bytes.Buffer{}
+	n := fmt.Sprintf("/tmp/%s", uuid.NewString())
 
-	err := createSSTable(iw, data, rbt)
+	data, err := os.Create(fmt.Sprintf("%s.data", n))
+	if err != nil {
+		assert.NoError(t, err)
+	}
+	defer os.Remove(data.Name())
+
+	idx, err := os.Create(fmt.Sprintf("%s.idx", n))
+	if err != nil {
+		assert.NoError(t, err)
+	}
+	defer os.Remove(idx.Name())
+
+	err = createSSTable(idx, data, rbt)
 	assert.NoError(t, err)
 
-	Get(nil, iw, data, []byte("aaa"))
+	sst, err := Open(fmt.Sprintf("%s", n))
+	defer sst.Close()
+	assert.NoError(t, err)
+
+	assert.NoError(t, err)
+
+	val, err := sst.Get([]byte("aaa"))
+	assert.NoError(t, err)
+
+	assert.Equal(t, []byte("111"), val)
+
 }

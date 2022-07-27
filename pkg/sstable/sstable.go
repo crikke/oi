@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
@@ -234,14 +233,16 @@ func decodeEntry(idx io.Reader, e *entry) (int, error) {
 
 func (s SSTable) Get(key []byte) ([]byte, error) {
 
-	entry, err := s.scan(0, r.Size(), key)
+	length := int64(-1)
+	// todo length should be blocksize from summary file
+	entry, err := s.scan(0, length, key)
 
 	if err != nil {
 		return nil, err
 	}
 
 	val := make([]byte, entry.keyLength)
-	if _, err := data.ReadAt(val, int64(entry.position)); err != nil {
+	if _, err := s.data.ReadAt(val, int64(entry.position)); err != nil {
 		return nil, err
 	}
 
@@ -250,29 +251,32 @@ func (s SSTable) Get(key []byte) ([]byte, error) {
 
 // searches the index for key starting at offset.
 // It will continue search until end or bytes read > length, in which key does not exist
-func (s SSTable) scan(offset, length int, key []byte) (entry, error) {
-	r := bufio.NewReader(s.index)
+// if length is -1 it will keep scanning until EOF
 
-	s.index
-	if _, err := r.Discard(offset); err != nil {
+func (s SSTable) scan(offset, length int64, key []byte) (entry, error) {
+
+	if _, err := s.index.Seek(offset, 0); err != nil {
 		return entry{}, err
 	}
 
-	bytesRead := 0
+	bytesRead := int64(0)
 	for {
 
-		if bytesRead > length {
+		if length != -1 && bytesRead > length {
 			break
 		}
 
 		e := &entry{}
 
-		n, err := decodeEntry(idx, e)
+		n, err := decodeEntry(s.index, e)
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return entry{}, err
 		}
 
-		bytesRead += n
+		bytesRead += int64(n)
 
 		if bytes.Equal(e.key, key) {
 			return *e, nil
