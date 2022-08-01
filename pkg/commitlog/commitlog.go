@@ -2,6 +2,7 @@ package commitlog
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"os"
 	"sync"
@@ -18,7 +19,11 @@ type record struct {
 	data       []byte
 	dataLength uint32
 	crc        uint32
-	lsn        uint32
+	// todo
+	// Should LSN start at 0 for each segment?
+	// LogSegments are named by incrementing number
+	//
+	lsn uint32
 }
 
 type mutation struct {
@@ -38,15 +43,26 @@ type Writer struct {
 	writerChannel chan record
 }
 
-func NewWriter() *Writer {
+func NewWriter(f os.File) *Writer {
 
+	fi, err := f.Stat()
+
+	if err != nil {
+		return nil
+	}
+
+	// todo
+	// bug here if a existing file is opened LSN will reset,
+	// could byteoffset be used instead? I think Postgres may do something similar
 	w := &Writer{
 		mu:            sync.Mutex{},
 		writerChannel: make(chan record),
 		counter:       0,
+		file:          f,
+		size:          int32(fi.Size()),
 	}
 
-	go w.syncLoop()
+	go w.writeLoop()
 	return w
 }
 
@@ -104,21 +120,51 @@ func (w *Writer) Write(m mutation) error {
 // wal.addMutation
 // create the mutation and pass it to commitlogLoop which handles setting lsn and appending to file
 
-func (c *Writer) syncLoop() error {
+func (w *Writer) writeLoop() error {
 
 	for {
 
-		r, ok := <-c.writerChannel
+		r, ok := <-w.writerChannel
 		if !ok {
 			break
 		}
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		r.lsn = uint32(c.counter)
-		c.counter++
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		r.lsn = uint32(w.counter)
+		w.counter++
 
+		data, err := r.MarshalBinary()
+
+		if err != nil {
+			return err
+		}
+
+		l, err := w.file.Write(data)
+
+		if err != nil {
+			return err
+		}
+
+		w.size += int32(l)
 	}
 
 	return nil
+}
+
+func (r record) MarshalBinary() ([]byte, error) {
+
+	data := make([]byte, 12)
+
+	binary.LittleEndian.PutUint32(data[0:4], r.lsn)
+	binary.LittleEndian.PutUint32(data[4:8], r.dataLength)
+
+	if r.crc == uint32(0) {
+		return nil, errors.New("record missing checksum")
+	}
+
+	binary.LittleEndian.PutUint32(data[8:12], r.crc)
+
+	data = append(data, r.data...)
+	return data, nil
 }
