@@ -3,6 +3,7 @@ package commitlog
 import (
 	"encoding/binary"
 	"hash/crc32"
+	"os"
 	"sync"
 )
 
@@ -28,11 +29,25 @@ type mutation struct {
 	tombstone   bool
 }
 
-type commitlogWriter struct {
+type Writer struct {
 	mu      sync.Mutex
 	counter int32
-
+	file    os.File
+	// size of current segment
+	size          int32
 	writerChannel chan record
+}
+
+func NewWriter() *Writer {
+
+	w := &Writer{
+		mu:            sync.Mutex{},
+		writerChannel: make(chan record),
+		counter:       0,
+	}
+
+	go w.syncLoop()
+	return w
 }
 
 func (m mutation) MarshalBinary() ([]byte, error) {
@@ -67,11 +82,11 @@ func makeMutation(key, value []byte, tombstone bool) mutation {
 	return data
 }
 
-func makeRecord(m mutation) (record, error) {
+func (w *Writer) Write(m mutation) error {
 
 	data, err := m.MarshalBinary()
 	if err != nil {
-		return record{}, err
+		return err
 	}
 
 	r := record{
@@ -80,10 +95,16 @@ func makeRecord(m mutation) (record, error) {
 		dataLength: uint32(len(data)),
 	}
 
-	return r, nil
+	w.writerChannel <- r
+	return nil
 }
 
-func (c *commitlogWriter) startCommitLogLoop() error {
+// flow of an inserting a record
+//
+// wal.addMutation
+// create the mutation and pass it to commitlogLoop which handles setting lsn and appending to file
+
+func (c *Writer) syncLoop() error {
 
 	for {
 
@@ -93,15 +114,11 @@ func (c *commitlogWriter) startCommitLogLoop() error {
 		}
 
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		r.lsn = uint32(c.counter)
 		c.counter++
-		c.mu.Unlock()
 
 	}
 
 	return nil
-}
-
-func append(r record) {
-
 }
