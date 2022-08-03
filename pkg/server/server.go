@@ -37,11 +37,12 @@ func (s Server) Start() {
 	for _, db := range s.databases {
 		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Log, db.metadata.DbName))
 		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Data, db.metadata.DbName))
-	}
-}
+		// When starting Commitlog manager
+		// check db for last applied record
+		// handle replaying records not applied yet
+		// once done start accepting reads & writes
 
-type db struct {
-	metadata DbMetadata
+	}
 }
 
 func (s Server) loadDatabaseMetadata() error {

@@ -9,6 +9,8 @@ const metdataPrefix = "db_"
 
 type DbMetadata struct {
 	DbName string
+	// The most recent synced (written to SSTable) record.
+	LastAppliedRecord int
 }
 
 func loadMetadata(r io.Reader) (DbMetadata, error) {
@@ -21,4 +23,12 @@ func loadMetadata(r io.Reader) (DbMetadata, error) {
 	}
 
 	return m, nil
+}
+
+type db struct {
+	metadata DbMetadata
+}
+
+func (d *db) start() error {
+
 }
