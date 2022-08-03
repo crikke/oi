@@ -8,8 +8,9 @@ import (
 	"sync"
 )
 
-// In the event restarting the database because of failure, get internal.record which is the last applied mutation
-// When persisting the Memtree to an SSTable on disk, update internal.record
+// TODO:
+// For now if system failures all SSTables will be discarded and new ones will be remade from the commitlog
+// later on use checkpoints instead of discarding all SSTables
 
 // A record holds an mutation which is when state changes (insert, update, delete)
 //
@@ -120,6 +121,7 @@ func (w *Writer) Write(m mutation) error {
 // wal.addMutation
 // create the mutation and pass it to commitlogLoop which handles setting lsn and appending to file
 
+// todo Check size of segment, currently no check if size is larged than allowed. In the future if size of the segment is larger than a threshold, start appending to a new segment
 func (w *Writer) writeLoop() error {
 
 	for {
