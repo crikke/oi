@@ -20,11 +20,9 @@ type Record struct {
 	data       []byte
 	dataLength uint32
 	crc        uint32
-	// todo
-	// Should LSN start at 0 for each segment?
-	// LogSegments are named by incrementing number
-	//
-	lsn uint32
+	// first 32 bits are in which segment the record existing
+	// last 32 bits are specify order of the records in the segment
+	lsn uint64
 }
 
 type Mutation struct {
