@@ -22,7 +22,7 @@ type Record struct {
 	crc        uint32
 	// first 32 bits are in which segment the record existing
 	// last 32 bits are specify order of the records in the segment
-	lsn uint64
+	LSN uint64
 }
 
 type Mutation struct {
@@ -131,7 +131,7 @@ func (w *Writer) writeLoop() error {
 
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		r.lsn = uint64(w.counter)
+		r.LSN = uint64(w.counter)
 		w.counter++
 
 		data, err := r.MarshalBinary()
@@ -156,7 +156,7 @@ func (r Record) MarshalBinary() ([]byte, error) {
 
 	data := make([]byte, 12)
 
-	binary.LittleEndian.PutUint64(data[0:4], r.lsn)
+	binary.LittleEndian.PutUint64(data[0:4], r.LSN)
 	binary.LittleEndian.PutUint32(data[4:8], r.dataLength)
 
 	if r.crc == uint32(0) {

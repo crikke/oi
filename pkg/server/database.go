@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/gob"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -120,7 +119,17 @@ func (d *db) replaySegment(s os.DirEntry) {
 
 	records := commitlog.ReadLogSegment(f)
 
+	lastAppliedRecord := getLastAppliedRecord(d.metadata.LastAppliedRecord)
+
+	// skip already applied records
+
+	if records[len(records)-1].LSN == lastAppliedRecord {
+		return
+	}
+
+	records = records[lastAppliedRecord+1:]
+
 	for _, record := range records {
-		fmt.Printf("record: %v\n", record)
+
 	}
 }
