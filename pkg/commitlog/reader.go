@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func ReadLogSegment(f os.File) []Record {
+func ReadLogSegment(f *os.File) []Record {
 
 	records := make([]Record, 0)
 	for {
@@ -23,7 +23,7 @@ func ReadLogSegment(f os.File) []Record {
 			panic(err)
 		}
 
-		r.lsn = binary.LittleEndian.Uint32(lsn)
+		r.lsn = binary.LittleEndian.Uint64(lsn)
 
 		dataLen := make([]byte, 4)
 		if _, err := f.Read(dataLen); err != nil {
