@@ -23,7 +23,7 @@ func ReadLogSegment(f *os.File) []Record {
 			panic(err)
 		}
 
-		r.lsn = binary.LittleEndian.Uint64(lsn)
+		r.LSN = binary.LittleEndian.Uint64(lsn)
 
 		dataLen := make([]byte, 4)
 		if _, err := f.Read(dataLen); err != nil {

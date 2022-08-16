@@ -1,8 +1,6 @@
 package commitlog
 
 import (
-	"encoding/binary"
-	"errors"
 	"hash/crc32"
 	"os"
 	"sync"
@@ -16,23 +14,6 @@ import (
 //
 // When writing a Record to disk, it will calculate the checksum for the mutation
 // and get a lsn which is a monotonic number that is used to replay records in the event of failure
-type Record struct {
-	data       []byte
-	dataLength uint32
-	crc        uint32
-	// first 32 bits are in which segment the record existing
-	// last 32 bits are specify order of the records in the segment
-	LSN uint64
-}
-
-type Mutation struct {
-	keyLength   uint16
-	key         []byte
-	valueLength int32
-	value       []byte
-	tombstone   bool
-}
-
 type Writer struct {
 	mu      sync.Mutex
 	counter int32
@@ -63,38 +44,6 @@ func NewWriter(f os.File) *Writer {
 
 	go w.writeLoop()
 	return w
-}
-
-func (m Mutation) MarshalBinary() ([]byte, error) {
-
-	data := make([]byte, 7)
-
-	binary.LittleEndian.PutUint16(data[0:2], m.keyLength)
-	binary.LittleEndian.PutUint32(data[2:6], uint32(m.valueLength))
-
-	tombstone := uint8(0)
-	if m.tombstone {
-		tombstone = 1
-	}
-	data[6] = tombstone
-
-	data = append(data, m.key...)
-	data = append(data, m.value...)
-
-	return data, nil
-}
-
-func makeMutation(key, value []byte, tombstone bool) Mutation {
-
-	data := Mutation{
-		value:       value,
-		key:         key,
-		keyLength:   uint16(len(key)),
-		valueLength: int32(len(value)),
-		tombstone:   tombstone,
-	}
-
-	return data
 }
 
 func (w *Writer) Write(m Mutation) error {
@@ -150,21 +99,4 @@ func (w *Writer) writeLoop() error {
 	}
 
 	return nil
-}
-
-func (r Record) MarshalBinary() ([]byte, error) {
-
-	data := make([]byte, 12)
-
-	binary.LittleEndian.PutUint64(data[0:4], r.LSN)
-	binary.LittleEndian.PutUint32(data[4:8], r.dataLength)
-
-	if r.crc == uint32(0) {
-		return nil, errors.New("record missing checksum")
-	}
-
-	binary.LittleEndian.PutUint32(data[8:12], r.crc)
-
-	data = append(data, r.data...)
-	return data, nil
 }

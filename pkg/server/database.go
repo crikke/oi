@@ -123,7 +123,7 @@ func (d *db) replaySegment(s os.DirEntry) {
 
 	// skip already applied records
 
-	if records[len(records)-1].LSN == lastAppliedRecord {
+	if records[len(records)-1].LSN == d.metadata.LastAppliedRecord {
 		return
 	}
 
