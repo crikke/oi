@@ -32,3 +32,23 @@ func TestUnmarshalBinary(t *testing.T) {
 	assert.Equal(t, uint32(6), m.valueLength)
 
 }
+
+func TestMarshalBinary(t *testing.T) {
+
+	m := Mutation{
+		keyLength:   3,
+		Key:         []byte("foo"),
+		valueLength: 6,
+		Value:       []byte("barbaz"),
+		tombstone:   true,
+	}
+
+	data, err := m.MarshalBinary()
+
+	assert.NoError(t, err)
+	assert.Equal(t, m.keyLength, binary.LittleEndian.Uint16(data[0:2]))
+	assert.Equal(t, m.valueLength, binary.LittleEndian.Uint32(data[2:6]))
+	assert.Equal(t, uint8(1), data[6])
+	assert.Equal(t, []byte("foo"), data[7:10])
+	assert.Equal(t, []byte("barbaz"), data[10:16])
+}
