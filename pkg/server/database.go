@@ -131,5 +131,9 @@ func (d *db) replaySegment(s os.DirEntry) {
 
 	for _, record := range records {
 
+		m := &commitlog.Mutation{}
+
+		m.UnmarshalBinary(record.Data)
+		d.memcache.Put(string(m.Key), m.Value)
 	}
 }

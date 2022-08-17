@@ -54,9 +54,9 @@ func (w *Writer) Write(m Mutation) error {
 	}
 
 	r := Record{
-		data:       data,
-		crc:        crc32.ChecksumIEEE(data),
-		dataLength: uint32(len(data)),
+		Data:       data,
+		Crc:        crc32.ChecksumIEEE(data),
+		DataLength: uint32(len(data)),
 	}
 
 	w.writerChannel <- r

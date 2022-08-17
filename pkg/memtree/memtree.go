@@ -13,6 +13,7 @@ const ErrMaxSizeReached = "maximum size reached"
 
 // A memory tree stores the lasted writes in memory.
 // Once the tree is full, the data is written to disk as a SSTable and the tree is flushed
+
 type Memtree struct {
 	Size    int
 	MaxSize int

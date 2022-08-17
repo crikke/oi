@@ -30,22 +30,22 @@ func ReadLogSegment(f *os.File) []Record {
 			panic(err)
 		}
 
-		r.dataLength = binary.LittleEndian.Uint32(dataLen)
+		r.DataLength = binary.LittleEndian.Uint32(dataLen)
 
 		crc := make([]byte, 4)
 		if _, err := f.Read(crc); err != nil {
 			panic(err)
 		}
 
-		r.crc = binary.LittleEndian.Uint32(crc)
+		r.Crc = binary.LittleEndian.Uint32(crc)
 
-		data := make([]byte, r.dataLength)
+		data := make([]byte, r.DataLength)
 
 		if _, err := f.Read(data); err != nil {
 			panic(err)
 		}
 
-		r.data = data
+		r.Data = data
 
 		records = append(records, r)
 	}
