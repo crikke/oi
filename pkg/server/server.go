@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/crikke/oi/pkg/database"
 	"github.com/crikke/oi/pkg/memtree"
@@ -36,7 +37,12 @@ func (s Server) Start() {
 		panic(err)
 	}
 	s.databases = make([]*database.Database, 0)
+
+	var wg sync.WaitGroup
+
+	wg.Add(len(descriptors))
 	for _, descriptor := range descriptors {
+		defer wg.Done()
 		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Log, descriptor.DbName))
 		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Data, descriptor.DbName))
 		// When starting Commitlog manager
@@ -52,6 +58,8 @@ func (s Server) Start() {
 
 		s.databases = append(s.databases, db)
 	}
+
+	wg.Wait()
 }
 
 func (s Server) loadDatabaseMetadata() ([]DbMetadata, error) {
