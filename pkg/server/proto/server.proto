@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+message CreateDatabaseRequest {
+
+}
+
+message CreateDatabaseResponse {
+
+}
+
+service Server {
+    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse)
+}
