@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/crikke/oi/pkg/commitlog"
+	"github.com/crikke/oi/pkg/database"
 	"github.com/crikke/oi/pkg/memtree"
 )
 
@@ -40,26 +41,26 @@ type db struct {
 	metadata DbMetadata
 	// TODO: split database specific things from ServerConfiguration
 	configuration ServerConfiguration
-	memcache      *memtree.Memtree
 }
 
-func (d *db) start() error {
+func (s Server) initDatabase(descriptor DbMetadata) (*database.Database, error) {
 
-	mc, err := memtree.Initalize(d.configuration.Memtree)
+	db := &database.Database{}
+	mc, err := memtree.Initalize(s.Configuration.Memtree)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	d.memcache = &mc
+	db.Memcache = &mc
 
-	if d.metadata.LastAppliedRecord > 0 {
-		lastAppliedSegment := getLastAppliedSegment(d.metadata.LastAppliedRecord)
+	if descriptor.LastAppliedRecord > 0 {
+		lastAppliedSegment := getLastAppliedSegment(descriptor.LastAppliedRecord)
 
-		segmentFiles, err := getSegmentFiles(d.configuration.Directory.Log)
+		segmentFiles, err := getSegmentFiles(s.Configuration.Directory.Log)
 
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		segmentsToReplay := make([]os.DirEntry, 0)
@@ -74,10 +75,10 @@ func (d *db) start() error {
 		}
 
 		for _, segment := range segmentsToReplay {
-			d.replaySegment(segment)
+			replaySegment(segment, db, descriptor)
 		}
 	}
-	return nil
+	return db, nil
 }
 
 func getLastAppliedSegment(lsn uint64) uint32 {
@@ -109,7 +110,7 @@ func getSegmentFiles(dir string) ([]os.DirEntry, error) {
 	return res, nil
 }
 
-func (d *db) replaySegment(s os.DirEntry) {
+func replaySegment(s os.DirEntry, db *database.Database, descriptor DbMetadata) {
 
 	f, err := os.Open(s.Name())
 	if err != nil {
@@ -119,11 +120,11 @@ func (d *db) replaySegment(s os.DirEntry) {
 
 	records := commitlog.ReadLogSegment(f)
 
-	lastAppliedRecord := getLastAppliedRecord(d.metadata.LastAppliedRecord)
+	lastAppliedRecord := getLastAppliedRecord(descriptor.LastAppliedRecord)
 
 	// skip already applied records
 
-	if records[len(records)-1].LSN == d.metadata.LastAppliedRecord {
+	if records[len(records)-1].LSN == descriptor.LastAppliedRecord {
 		return
 	}
 
@@ -134,6 +135,6 @@ func (d *db) replaySegment(s os.DirEntry) {
 		m := &commitlog.Mutation{}
 
 		m.UnmarshalBinary(record.Data)
-		d.memcache.Put(string(m.Key), m.Value)
+		db.Memcache.Put(string(m.Key), m.Value)
 	}
 }

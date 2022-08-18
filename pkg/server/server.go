@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/crikke/oi/pkg/database"
 	"github.com/crikke/oi/pkg/memtree"
 )
 
@@ -25,27 +26,35 @@ type ServerConfiguration struct {
 
 type Server struct {
 	Configuration ServerConfiguration
-	databases     []*db
+	databases     []*database.Database
 }
 
 func (s Server) Start() {
 
-	if err := s.loadDatabaseMetadata(); err != nil {
-		log.Fatal(err)
+	descriptors, err := s.loadDatabaseMetadata()
+	if err != nil {
+		panic(err)
 	}
-
-	for _, db := range s.databases {
-		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Log, db.metadata.DbName))
-		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Data, db.metadata.DbName))
+	s.databases = make([]*database.Database, 0)
+	for _, descriptor := range descriptors {
+		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Log, descriptor.DbName))
+		ensureDirExists(fmt.Sprintf("%s/%s", s.Configuration.Directory.Data, descriptor.DbName))
 		// When starting Commitlog manager
 		// check db for last applied record
 		// handle replaying records not applied yet
 		// once done start accepting reads & writes
 
+		db, err := s.initDatabase(descriptor)
+
+		if err != nil {
+			panic(err)
+		}
+
+		s.databases = append(s.databases, db)
 	}
 }
 
-func (s Server) loadDatabaseMetadata() error {
+func (s Server) loadDatabaseMetadata() ([]DbMetadata, error) {
 	ensureDirExists(s.Configuration.Directory.Metadata)
 
 	entries, err := os.ReadDir(s.Configuration.Directory.Metadata)
@@ -54,6 +63,7 @@ func (s Server) loadDatabaseMetadata() error {
 		panic(err)
 	}
 
+	md := make([]DbMetadata, 0)
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), metdataPrefix) {
 
@@ -66,11 +76,10 @@ func (s Server) loadDatabaseMetadata() error {
 			if err != nil {
 				log.Fatal(err)
 			}
-
-			s.databases = append(s.databases, &db{metadata: m})
+			md = append(md, m)
 		}
 	}
-	return nil
+	return md, nil
 }
 
 func ensureDirExists(dir string) {
