@@ -5,6 +5,15 @@ import (
 	"errors"
 )
 
+// Record contains a mutation which has been persisted to disk.
+//
+// To ensure that records can be replayed in the correct order, each record will receive an monotonic
+// log sequence number (LSN). The LSN is a 64bit unsigned integer which the first 32bits specify in which
+// log segment file the record exist and the last 32 bits specify the records index in the file.
+//
+// When persisting the record the checksum of the mutation is calculated and persisted aswell (CRC), in order
+// to ensure that the data is valid when replaying the records. The persisted checksum is compared to the
+// checksum of the data field
 type Record struct {
 	Data       []byte
 	DataLength uint32
