@@ -12,7 +12,7 @@ func Test_get_last_applied_segment(t *testing.T) {
 	// record
 	segment += 123
 
-	assert.Equal(t, uint32(101), getLastAppliedSegment(segment))
+	assert.Equal(t, uint32(101), GetLastAppliedSegment(segment))
 }
 
 func Test_get_last_applied_record(t *testing.T) {
@@ -21,5 +21,5 @@ func Test_get_last_applied_record(t *testing.T) {
 	// record
 	segment += 123
 
-	assert.Equal(t, 123, getLastAppliedRecord(segment))
+	assert.Equal(t, 123, GetLastAppliedRecord(segment))
 }

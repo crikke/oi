@@ -26,7 +26,9 @@ type Configuration struct {
 		Data string
 		Log  string
 	}
-
+	Commitlog struct {
+		SegmentSize uint32
+	}
 	Memtree memtree.Configuration
 }
 
@@ -51,6 +53,17 @@ func Init(descriptor Descriptor, c Configuration) (*Database, error) {
 	db.Memtable = &mc
 
 	return nil, nil
+
+}
+
+// !! IMPORTANT !!
+func (d *Database) startCommitlogWriter() error {
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (d *Database) ensureRecordsAreApplied() error {

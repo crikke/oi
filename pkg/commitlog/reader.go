@@ -91,3 +91,16 @@ func GetSegmentFiles(dir string) ([]os.DirEntry, error) {
 
 	return res, nil
 }
+
+func GetCurrentSegment(logDir string, maxSegmentSize int32) (*os.File, error) {
+
+	segments, err := GetSegmentFiles(logDir)
+
+	if err != nil {
+		return nil, err
+	}
+
+	segment := segments[len(segments)-1]
+
+	return os.Open(segment.Name())
+}
