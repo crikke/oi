@@ -1,21 +1,25 @@
 package commitlog
 
 import (
+	"errors"
 	"hash/crc32"
 	"os"
 	"sync"
 )
 
+var ErrMaxSegmentSizeReached = errors.New("max segment size reached")
+
 type Writer struct {
 	mu      sync.Mutex
 	counter int32
-	file    os.File
+	file    *os.File
 	// size of current segment
 	size          int32
 	writerChannel chan Record
+	Done          chan error
 }
 
-func NewWriter(f os.File) *Writer {
+func NewWriter(f *os.File) *Writer {
 
 	fi, err := f.Stat()
 
@@ -29,6 +33,7 @@ func NewWriter(f os.File) *Writer {
 	w := &Writer{
 		mu:            sync.Mutex{},
 		writerChannel: make(chan Record),
+		Done:          make(chan error),
 		counter:       0,
 		file:          f,
 		size:          int32(fi.Size()),

@@ -3,8 +3,10 @@ package commitlog
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +63,25 @@ func ReadLogSegment(f io.Reader) []Record {
 		records = append(records, r)
 	}
 	return records
+}
+func NextSegment(logDir string) (*os.File, error) {
+	segments, err := GetSegmentFiles(logDir)
+
+	if err != nil {
+		return nil, err
+	}
+
+	current := segments[len(segments)-1]
+
+	currentName := strings.TrimPrefix(strings.TrimSuffix(current.Name(), LogSuffix), LogPrefix)
+	n, err := strconv.ParseUint(currentName, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	next := ((n >> 32) + 1) << 32
+
+	return os.OpenFile(fmt.Sprintf("%s%d%s", LogPrefix, next, LogSuffix), os.O_CREATE|os.O_APPEND, 660)
 }
 
 func GetLastAppliedSegment(lsn uint64) uint32 {

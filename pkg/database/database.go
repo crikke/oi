@@ -2,6 +2,7 @@ package database
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -56,14 +57,33 @@ func Init(descriptor Descriptor, c Configuration) (*Database, error) {
 
 }
 
-// !! IMPORTANT !!
+// logic flow of appeding to segment:
+//
+// loop
+//		get current segment
+//		Start New writer
+//		wait for done chan
+//		if done != full return error
+//
 func (d *Database) startCommitlogWriter() error {
 
-	if err != nil {
-		return err
-	}
+	f, err := commitlog.GetCurrentSegment(d.Configuration.Directory.Log, int32(d.Configuration.Commitlog.SegmentSize))
 
-	return nil
+	for {
+		w := commitlog.NewWriter(f)
+
+		if err = <-w.Done; !errors.Is(err, commitlog.ErrMaxSegmentSizeReached) {
+			return err
+		}
+		if err = f.Close(); err != nil {
+			return err
+		}
+
+		f, err = commitlog.NextSegment(d.Configuration.Directory.Log)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func (d *Database) ensureRecordsAreApplied() error {
