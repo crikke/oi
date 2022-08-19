@@ -5,9 +5,20 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 )
 
-func ReadLogSegment(f *os.File) []Record {
+const (
+	LogPrefix = "log_"
+	LogSuffix = ".log"
+)
+
+// TODO: Ensure that each record is pure
+// A mutation must contain the actual value and not for example time.Now or previous + 1
+// This must be enforced in order to guarantee that the records will be replayed correctly and not
+// corrupt state.
+
+func ReadLogSegment(f io.Reader) []Record {
 
 	records := make([]Record, 0)
 	for {
@@ -50,4 +61,33 @@ func ReadLogSegment(f *os.File) []Record {
 		records = append(records, r)
 	}
 	return records
+}
+
+func GetLastAppliedSegment(lsn uint64) uint32 {
+
+	return uint32(lsn >> 32)
+}
+
+func GetLastAppliedRecord(lsn uint64) int {
+	return int(lsn & 0xffffffff)
+}
+
+func GetSegmentFiles(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]os.DirEntry, 0)
+
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), LogPrefix) {
+			continue
+		}
+
+		res = append(res, entry)
+	}
+
+	return res, nil
 }

@@ -6,14 +6,6 @@ import (
 	"sync"
 )
 
-// TODO:
-// For now if system failures all SSTables will be discarded and new ones will be remade from the commitlog
-// later on use checkpoints instead of discarding all SSTables
-
-// A Record holds an mutation which is when state changes (insert, update, delete)
-//
-// When writing a Record to disk, it will calculate the checksum for the mutation
-// and get a lsn which is a monotonic number that is used to replay records in the event of failure
 type Writer struct {
 	mu      sync.Mutex
 	counter int32

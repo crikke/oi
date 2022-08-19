@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+import "generic.proto";
+
+message ResponseStatus {
+    int32 code = 1;
+    string message = 2;
+}
+
+message CreateDatabaseRequest {
+    string name = 1 ;
+}
+
+message CreateDatabaseResponse {
+    ResponseStatus code = 1;
+}
+
+service Server {
+    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse)
+}

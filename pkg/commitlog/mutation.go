@@ -2,6 +2,7 @@ package commitlog
 
 import "encoding/binary"
 
+// A Mutation is a descripton of state change
 type Mutation struct {
 	keyLength   uint16
 	Key         []byte
