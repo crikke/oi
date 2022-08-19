@@ -10,16 +10,26 @@ import (
 var ErrMaxSegmentSizeReached = errors.New("max segment size reached")
 
 type Writer struct {
-	mu      sync.Mutex
-	counter int32
-	file    *os.File
+	mu            sync.Mutex
+	counter       uint32
+	file          *os.File
+	segmentNumber uint32
+
 	// size of current segment
-	size          int32
-	writerChannel chan Record
-	Done          chan error
+	size           int32
+	writerChannel  chan Record
+	done           chan error
+	logDir         string
+	maxSegmentSize int
 }
 
-func NewWriter(f *os.File) *Writer {
+func NewWriter(logDir string, maxSegmentSize int) *Writer {
+
+	f, err := GetCurrentSegment(logDir, maxSegmentSize)
+
+	if err != nil {
+		return nil
+	}
 
 	fi, err := f.Stat()
 
@@ -27,16 +37,25 @@ func NewWriter(f *os.File) *Writer {
 		return nil
 	}
 
+	segmentNumber, err := parseSegmentName(f.Name())
+	records := ReadLogSegment(f)
+	if err != nil {
+		panic(err)
+	}
+
 	// todo
 	// bug here if a existing file is opened LSN will reset,
 	// could byteoffset be used instead? I think Postgres may do something similar
 	w := &Writer{
-		mu:            sync.Mutex{},
-		writerChannel: make(chan Record),
-		Done:          make(chan error),
-		counter:       0,
-		file:          f,
-		size:          int32(fi.Size()),
+		mu:             sync.Mutex{},
+		writerChannel:  make(chan Record),
+		done:           make(chan error),
+		file:           f,
+		size:           int32(fi.Size()),
+		logDir:         logDir,
+		counter:        uint32(len(records)) - 1,
+		maxSegmentSize: maxSegmentSize,
+		segmentNumber:  uint32(segmentNumber),
 	}
 
 	go w.writeLoop()
@@ -69,31 +88,55 @@ func (w *Writer) Write(m Mutation) error {
 func (w *Writer) writeLoop() error {
 
 	for {
+		select {
 
-		r, ok := <-w.writerChannel
-		if !ok {
+		case r := <-w.writerChannel:
+
+			w.mu.Lock()
+			defer w.mu.Unlock()
+
+			r.LSN = uint64(w.segmentNumber + w.counter)
+			w.counter++
+
+			// TODO: inc record only
+			data, err := r.MarshalBinary()
+
+			if len(data)+int(w.size) > w.maxSegmentSize {
+			}
+
+			if err != nil {
+				return err
+			}
+
+			l, err := w.file.Write(data)
+
+			if err != nil {
+				return err
+			}
+
+			w.size += int32(l)
+
+		case <-w.done:
 			break
+
 		}
-
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		r.LSN = uint64(w.counter)
-		w.counter++
-
-		data, err := r.MarshalBinary()
-
-		if err != nil {
-			return err
-		}
-
-		l, err := w.file.Write(data)
-
-		if err != nil {
-			return err
-		}
-
-		w.size += int32(l)
 	}
 
 	return nil
 }
+
+func (w *Writer) Close() {
+
+}
+
+func (w *Writer) nextSegment() {
+
+	w.file.Close()
+	w.segmentNumber +=1
+	name := fmt.Sprintf("%s%d%s", LogPrefix, w.segmentNumber, LogSuffix)
+	f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND, 660)
+	if err != nil {
+		panic(err)
+	}
+	w.counter = 0
+	w.file = f

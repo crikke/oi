@@ -37,6 +37,7 @@ type Database struct {
 	Memtable      *memtree.Memtree
 	Configuration Configuration
 	descriptor    Descriptor
+	closeChannel  chan struct{}
 }
 
 func Init(descriptor Descriptor, c Configuration) (*Database, error) {
@@ -44,7 +45,9 @@ func Init(descriptor Descriptor, c Configuration) (*Database, error) {
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Log, descriptor.Name))
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Data, descriptor.Name))
 	// When starting Commitlog manager
-	db := &Database{}
+	db := &Database{
+		closeChannel: make(chan struct{}),
+	}
 
 	mc, err := memtree.Initalize(c.Memtree)
 
@@ -70,12 +73,10 @@ func (d *Database) startCommitlogWriter() error {
 	f, err := commitlog.GetCurrentSegment(d.Configuration.Directory.Log, int32(d.Configuration.Commitlog.SegmentSize))
 
 	for {
+		defer f.Close()
 		w := commitlog.NewWriter(f)
 
 		if err = <-w.Done; !errors.Is(err, commitlog.ErrMaxSegmentSizeReached) {
-			return err
-		}
-		if err = f.Close(); err != nil {
 			return err
 		}
 

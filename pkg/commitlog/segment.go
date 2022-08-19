@@ -64,6 +64,18 @@ func ReadLogSegment(f io.Reader) []Record {
 	}
 	return records
 }
+
+func parseSegmentName(str string) (uint64, error) {
+
+	name := strings.TrimPrefix(strings.TrimSuffix(str, LogSuffix), LogPrefix)
+	n, err := strconv.ParseUint(name, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return n >> 32, nil
+
+}
 func NextSegment(logDir string) (*os.File, error) {
 	segments, err := GetSegmentFiles(logDir)
 
