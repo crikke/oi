@@ -1,6 +1,7 @@
 package commitlog
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -20,48 +21,53 @@ const (
 // This must be enforced in order to guarantee that the records will be replayed correctly and not
 // corrupt state.
 
-func ReadLogSegment(f io.Reader) ([]Record, error) {
+func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 
 	records := make([]Record, 0)
 	for {
+		select {
+		case <-ctx.Done():
+			break
+		default:
 
-		r := Record{}
+			r := Record{}
 
-		lsn := make([]byte, 4)
-		if _, err := f.Read(lsn); err != nil {
+			lsn := make([]byte, 4)
+			if _, err := f.Read(lsn); err != nil {
 
-			if errors.Is(err, io.EOF) {
-				break
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
 			}
-			return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
+
+			r.LSN = binary.LittleEndian.Uint64(lsn)
+
+			dataLen := make([]byte, 4)
+			if _, err := f.Read(dataLen); err != nil {
+				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
+			}
+
+			r.DataLength = binary.LittleEndian.Uint32(dataLen)
+
+			crc := make([]byte, 4)
+			if _, err := f.Read(crc); err != nil {
+
+				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
+			}
+
+			r.Crc = binary.LittleEndian.Uint32(crc)
+
+			data := make([]byte, r.DataLength)
+
+			if _, err := f.Read(data); err != nil {
+				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
+			}
+
+			r.Data = data
+
+			records = append(records, r)
 		}
-
-		r.LSN = binary.LittleEndian.Uint64(lsn)
-
-		dataLen := make([]byte, 4)
-		if _, err := f.Read(dataLen); err != nil {
-			return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
-		}
-
-		r.DataLength = binary.LittleEndian.Uint32(dataLen)
-
-		crc := make([]byte, 4)
-		if _, err := f.Read(crc); err != nil {
-
-			return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
-		}
-
-		r.Crc = binary.LittleEndian.Uint32(crc)
-
-		data := make([]byte, r.DataLength)
-
-		if _, err := f.Read(data); err != nil {
-			return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
-		}
-
-		r.Data = data
-
-		records = append(records, r)
 	}
 	return records, nil
 }

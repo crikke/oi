@@ -87,7 +87,7 @@ func (d *Database) ensureRecordsAreApplied(ctx context.Context) error {
 	return nil
 }
 
-func replaySegment(s os.DirEntry, db *Database, descriptor Descriptor) error {
+func replaySegment(ctx context.Context, s os.DirEntry, db *Database, descriptor Descriptor) error {
 
 	f, err := os.Open(s.Name())
 	if err != nil {
@@ -95,21 +95,28 @@ func replaySegment(s os.DirEntry, db *Database, descriptor Descriptor) error {
 	}
 	defer f.Close()
 
-	records, err := commitlog.ReadLogSegment(f)
+	records, err := commitlog.ReadLogSegment(ctx, f)
 	if err != nil {
 		return fmt.Errorf("[replaySegment] fatal: %w", err)
 	}
 
 	for _, record := range records {
 	
-		// skip applied records 
-		if record.LSN <= descriptor.LastAppliedRecord {
-			continue
+		select {
+		case <-ctx.Done():
+			break
+		default:
+
+
+			// skip applied records 
+			if record.LSN <= descriptor.LastAppliedRecord {
+				continue
+			}
+			m := &commitlog.Mutation{}
+			m.UnmarshalBinary(record.Data)
+			db.Memtable.Put(string(m.Key), m.Value)
+			
 		}
-		m := &commitlog.Mutation{}
-		m.UnmarshalBinary(record.Data)
-		db.Memtable.Put(string(m.Key), m.Value)
-	}
 }
 
 func DecodeDescriptor(r io.Reader) (Descriptor, error) {
