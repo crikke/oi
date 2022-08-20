@@ -1,8 +1,8 @@
 package database
 
 import (
+	"context"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,10 +37,10 @@ type Database struct {
 	Memtable      *memtree.Memtree
 	Configuration Configuration
 	descriptor    Descriptor
-	closeChannel  chan struct{}
+	writer        *commitlog.Writer
 }
 
-func Init(descriptor Descriptor, c Configuration) (*Database, error) {
+func Init(ctx context.Context, descriptor Descriptor, c Configuration) (*Database, error) {
 
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Log, descriptor.Name))
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Data, descriptor.Name))
@@ -48,7 +48,6 @@ func Init(descriptor Descriptor, c Configuration) (*Database, error) {
 	db := &Database{
 		closeChannel: make(chan struct{}),
 	}
-
 	mc, err := memtree.Initalize(c.Memtree)
 
 	if err != nil {
@@ -56,67 +55,39 @@ func Init(descriptor Descriptor, c Configuration) (*Database, error) {
 	}
 	db.Memtable = &mc
 
+	w := commitlog.NewWriter(ctx, db.Configuration.Directory.Log, int(db.Configuration.Commitlog.SegmentSize))
+	db.writer = w
+
+	db.ensureRecordsAreApplied(ctx)
 	return nil, nil
 
 }
 
-// logic flow of appeding to segment:
-//
-// loop
-//		get current segment
-//		Start New writer
-//		wait for done chan
-//		if done != full return error
-//
-func (d *Database) startCommitlogWriter() error {
-
-	f, err := commitlog.GetCurrentSegment(d.Configuration.Directory.Log, int32(d.Configuration.Commitlog.SegmentSize))
-
-	for {
-		defer f.Close()
-		w := commitlog.NewWriter(f)
-
-		if err = <-w.Done; !errors.Is(err, commitlog.ErrMaxSegmentSizeReached) {
-			return err
-		}
-
-		f, err = commitlog.NextSegment(d.Configuration.Directory.Log)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (d *Database) ensureRecordsAreApplied() error {
+func (d *Database) ensureRecordsAreApplied(ctx context.Context) error {
 
 	if d.descriptor.LastAppliedRecord > 0 {
-		lastAppliedSegment := commitlog.GetLastAppliedSegment(d.descriptor.LastAppliedRecord)
-
-		segmentFiles, err := commitlog.GetSegmentFiles(d.Configuration.Directory.Log)
+		segmentFiles, err := commitlog.GetTrailingSegments(d.Configuration.Directory.Log, d.descriptor.LastAppliedRecord)
 
 		if err != nil {
-			return err
+			fmt.Errorf("[ensureRecordsAreApplied] fatal: %w", err)
 		}
 
-		segmentsToReplay := make([]os.DirEntry, 0)
-		for i, entry := range segmentFiles {
-			// remove the actual prefix from segment
-			n := entry.Name()[len(commitlog.LogPrefix):]
+		for _, segment := range segmentFiles {
 
-			if strings.HasPrefix(n, strconv.FormatUint(uint64(lastAppliedSegment), 10)) {
-				segmentsToReplay = append(segmentsToReplay, segmentFiles[i:]...)
-				break
-			}
-		}
-
-		for _, segment := range segmentsToReplay {
-			replaySegment(segment, d, d.descriptor)
+			select {
+			case <-ctx.Done():
+				log.Println("cancelled applying records")
+				return
+			default:
+					if err := replaySegment(segment, d, d.descriptor); err != nil {
+						fmt.Errorf("[ensureRecordsAreApplied] fatal: %w", err)
+					}
 		}
 	}
 	return nil
 }
 
-func replaySegment(s os.DirEntry, db *Database, descriptor Descriptor) {
+func replaySegment(s os.DirEntry, db *Database, descriptor Descriptor) error {
 
 	f, err := os.Open(s.Name())
 	if err != nil {
@@ -124,20 +95,17 @@ func replaySegment(s os.DirEntry, db *Database, descriptor Descriptor) {
 	}
 	defer f.Close()
 
-	records := commitlog.ReadLogSegment(f)
-
-	lastAppliedRecord := commitlog.GetLastAppliedRecord(descriptor.LastAppliedRecord)
-
-	// skip already applied records
-
-	if records[len(records)-1].LSN == descriptor.LastAppliedRecord {
-		return
+	records, err := commitlog.ReadLogSegment(f)
+	if err != nil {
+		return fmt.Errorf("[replaySegment] fatal: %w", err)
 	}
 
-	records = records[lastAppliedRecord+1:]
-
 	for _, record := range records {
-
+	
+		// skip applied records 
+		if record.LSN <= descriptor.LastAppliedRecord {
+			continue
+		}
 		m := &commitlog.Mutation{}
 		m.UnmarshalBinary(record.Data)
 		db.Memtable.Put(string(m.Key), m.Value)

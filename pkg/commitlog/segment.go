@@ -86,7 +86,8 @@ func GetLastAppliedRecord(lsn uint64) int {
 	return int(lsn & 0xffffffff)
 }
 
-func GetSegmentFiles(dir string) ([]os.DirEntry, error) {
+// returns the segment that includes the specified lsn and all trailing segments
+func GetTrailingSegments(dir string, lsn uint64) ([]os.DirEntry, error) {
 	entries, err := os.ReadDir(dir)
 
 	if err != nil {
@@ -95,12 +96,22 @@ func GetSegmentFiles(dir string) ([]os.DirEntry, error) {
 
 	res := make([]os.DirEntry, 0)
 
+	// remove first 32 bits to get the segmentLsn for the record
+	recordLsn := lsn >> 32
+
 	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), LogPrefix) {
+		if !strings.HasPrefix(entry.Name(), LogPrefix) || !strings.HasSuffix(entry.Name(), LogSuffix) {
 			continue
 		}
 
-		res = append(res, entry)
+		segmentLsn, err := parseSegmentName(entry.Name())
+
+		if err != nil {
+			return nil, fmt.Errorf("[GetTrailingSegments] error parsing segment name: %w", err)
+		}
+		if segmentLsn >= recordLsn {
+			res = append(res, entry)
+		}
 	}
 
 	return res, nil
