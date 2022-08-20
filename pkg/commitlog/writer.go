@@ -1,13 +1,12 @@
 package commitlog
 
 import (
-	"errors"
+	"context"
+	"fmt"
 	"hash/crc32"
 	"os"
 	"sync"
 )
-
-var ErrMaxSegmentSizeReached = errors.New("max segment size reached")
 
 type Writer struct {
 	mu            sync.Mutex
@@ -18,12 +17,11 @@ type Writer struct {
 	// size of current segment
 	size           int32
 	writerChannel  chan Record
-	done           chan error
 	logDir         string
 	maxSegmentSize int
 }
 
-func NewWriter(logDir string, maxSegmentSize int) *Writer {
+func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) *Writer {
 
 	f, err := GetCurrentSegment(logDir, maxSegmentSize)
 
@@ -43,13 +41,9 @@ func NewWriter(logDir string, maxSegmentSize int) *Writer {
 		panic(err)
 	}
 
-	// todo
-	// bug here if a existing file is opened LSN will reset,
-	// could byteoffset be used instead? I think Postgres may do something similar
 	w := &Writer{
 		mu:             sync.Mutex{},
 		writerChannel:  make(chan Record),
-		done:           make(chan error),
 		file:           f,
 		size:           int32(fi.Size()),
 		logDir:         logDir,
@@ -58,7 +52,7 @@ func NewWriter(logDir string, maxSegmentSize int) *Writer {
 		segmentNumber:  uint32(segmentNumber),
 	}
 
-	go w.writeLoop()
+	go w.writeLoop(ctx)
 	return w
 }
 
@@ -79,13 +73,7 @@ func (w *Writer) Write(m Mutation) error {
 	return nil
 }
 
-// flow of an inserting a record
-//
-// wal.addMutation
-// create the mutation and pass it to commitlogLoop which handles setting lsn and appending to file
-
-// todo Check size of segment, currently no check if size is larged than allowed. In the future if size of the segment is larger than a threshold, start appending to a new segment
-func (w *Writer) writeLoop() error {
+func (w *Writer) writeLoop(ctx context.Context) error {
 
 	for {
 		select {
@@ -95,48 +83,48 @@ func (w *Writer) writeLoop() error {
 			w.mu.Lock()
 			defer w.mu.Unlock()
 
+			// TODO: !! IMPORTANT THIS MUST BE MOVED IF NEW SEGMENT IS CREATED
 			r.LSN = uint64(w.segmentNumber + w.counter)
 			w.counter++
 
-			// TODO: inc record only
 			data, err := r.MarshalBinary()
-
-			if len(data)+int(w.size) > w.maxSegmentSize {
+			if err != nil {
+				return fmt.Errorf("[writeLoop] error: %w", err)
 			}
 
-			if err != nil {
-				return err
+			if len(data)+int(w.size) > w.maxSegmentSize {
+				if err := w.nextSegment(); err != nil {
+					return fmt.Errorf("[writeLoop] fatal: %w", err)
+				}
 			}
 
 			l, err := w.file.Write(data)
 
 			if err != nil {
-				return err
+				return fmt.Errorf("[writeLoop] fatal: %w", err)
 			}
 
 			w.size += int32(l)
 
-		case <-w.done:
+		case <-ctx.Done():
 			break
 
 		}
 	}
-
-	return nil
 }
 
-func (w *Writer) Close() {
-
-}
-
-func (w *Writer) nextSegment() {
+// closes the current segmentfile and creates the next segment
+func (w *Writer) nextSegment() error {
 
 	w.file.Close()
-	w.segmentNumber +=1
+	w.segmentNumber += 1
 	name := fmt.Sprintf("%s%d%s", LogPrefix, w.segmentNumber, LogSuffix)
 	f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND, 660)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("[nextSegment] internal error: %w", err)
 	}
 	w.counter = 0
 	w.file = f
+
+	return nil
+}

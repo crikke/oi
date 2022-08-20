@@ -23,6 +23,8 @@ type Record struct {
 	LSN uint64
 }
 
+var ErrMissingChecksum = errors.New("marshalling record with missing checksum")
+
 func (r Record) MarshalBinary() ([]byte, error) {
 
 	data := make([]byte, 12)
@@ -31,7 +33,7 @@ func (r Record) MarshalBinary() ([]byte, error) {
 	binary.LittleEndian.PutUint32(data[4:8], r.DataLength)
 
 	if r.Crc == uint32(0) {
-		return nil, errors.New("record missing checksum")
+		return nil, ErrMissingChecksum
 	}
 
 	binary.LittleEndian.PutUint32(data[8:12], r.Crc)
