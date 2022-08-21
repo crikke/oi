@@ -21,24 +21,24 @@ type Writer struct {
 	maxSegmentSize int
 }
 
-func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) *Writer {
+func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) (*Writer, error) {
 
-	f, err := GetCurrentSegment(logDir, maxSegmentSize)
+	f, err := GetLatestSegment(logDir, maxSegmentSize)
 
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("[New Writer] fatal: %w", err)
 	}
 
 	fi, err := f.Stat()
 
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("[New Writer] fatal: %w", err)
 	}
 
 	segmentNumber, err := parseSegmentName(f.Name())
-	records := ReadLogSegment(f)
+	records, err := ReadLogSegment(ctx, f)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("[New Writer] fatal: %w", err)
 	}
 
 	w := &Writer{
@@ -53,7 +53,7 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) *Writer {
 	}
 
 	go w.writeLoop(ctx)
-	return w
+	return w, nil
 }
 
 func (w *Writer) Write(m Mutation) error {

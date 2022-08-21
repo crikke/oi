@@ -40,7 +40,6 @@ func (s Server) Start() {
 	wg.Add(len(descriptors))
 	for _, descriptor := range descriptors {
 		defer wg.Done()
-
 		db, err := database.Init(descriptor, s.Configuration.Database)
 
 		if err != nil {

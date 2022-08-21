@@ -24,7 +24,8 @@ const (
 func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 
 	records := make([]Record, 0)
-	for {
+	loop := true
+	for loop {
 		select {
 		case <-ctx.Done():
 			break
@@ -36,6 +37,7 @@ func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 			if _, err := f.Read(lsn); err != nil {
 
 				if errors.Is(err, io.EOF) {
+					loop = false
 					break
 				}
 				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
@@ -67,8 +69,11 @@ func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 			r.Data = data
 
 			records = append(records, r)
+
 		}
+
 	}
+
 	return records, nil
 }
 
@@ -83,12 +88,15 @@ func parseSegmentName(str string) (uint64, error) {
 	return n >> 32, nil
 
 }
-func GetLastAppliedSegment(lsn uint64) uint32 {
+
+// Returns the segmentnumber for the LSN which are the 32 first bits
+func SegmentNumber(lsn uint64) uint32 {
 
 	return uint32(lsn >> 32)
 }
 
-func GetLastAppliedRecord(lsn uint64) int {
+// returns the recordnumber for the LSN which are the last 32 bits
+func RecordNumber(lsn uint64) int {
 	return int(lsn & 0xffffffff)
 }
 
@@ -123,9 +131,9 @@ func GetTrailingSegments(dir string, lsn uint64) ([]os.DirEntry, error) {
 	return res, nil
 }
 
-func GetCurrentSegment(logDir string, maxSegmentSize int) (*os.File, error) {
+func GetLatestSegment(logDir string, maxSegmentSize int) (*os.File, error) {
 
-	segments, err := GetSegmentFiles(logDir)
+	segments, err := GetTrailingSegments(logDir, uint64(0))
 
 	if err != nil {
 		return nil, err
