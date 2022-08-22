@@ -1,11 +1,6 @@
 syntax = "proto3";
 
-import "generic.proto";
-
-message ResponseStatus {
-    int32 code = 1;
-    string message = 2;
-}
+option go_package = "pkg/server";
 
 message CreateDatabaseRequest {
     string name = 1 ;
@@ -15,6 +10,29 @@ message CreateDatabaseResponse {
     ResponseStatus code = 1;
 }
 
-service Server {
-    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse)
+// Start a database manually. If a database has been manually stopped, it will not automatically start when starting the server.
+message StartDatabaseRequest {
+    string name = 1;
+}
+message StartDatabaseResponse {
+    ResponseStatus code = 1;
+}
+message StopDatabaseRequest {
+    string name = 1;
+}
+
+message StopDatabaseResponse {
+    ResponseStatus code = 1;
+}
+
+message ResponseStatus {
+    int32 code = 1;
+    string responseMessage = 2;
+}
+
+
+service DatabaseManagerService {
+    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
+    rpc StopDatabase(StopDatabaseRequest) returns (StopDatabaseResponse);
+    rpc StartDatabase(StartDatabaseRequest) returns (StartDatabaseResponse);
 }

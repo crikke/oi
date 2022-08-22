@@ -7,6 +7,9 @@ import (
 	"sync"
 
 	"github.com/crikke/oi/pkg/database"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc"
 )
 
 // The engine is the main component which orchestrates all other components
@@ -25,10 +28,26 @@ type ServerConfiguration struct {
 type Server struct {
 	Configuration ServerConfiguration
 	databases     []*database.Database
+	logger        *zap.Logger
+}
+
+func NewServer() (*Server, error) {
+
+	logger, err := zap.NewProduction()
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{logger: logger}
+
+	grpcServer := grpc.NewServer()
+	RegisterDatabaseManagerServiceServer(grpcServer)
+
+	return s, nil
 }
 
 func (s Server) Start() {
 
+	s.logger.Log(zapcore.DebugLevel, "starting server")
 	descriptors, err := s.loadDatabaseDescriptors()
 	if err != nil {
 		panic(err)
@@ -39,13 +58,14 @@ func (s Server) Start() {
 
 	wg.Add(len(descriptors))
 	for _, descriptor := range descriptors {
+
 		defer wg.Done()
 		db, err := database.Init(descriptor, s.Configuration.Database)
-
 		if err != nil {
 			panic(err)
 		}
 
+		// once the database is initialized it is considered to be running and should accept requests
 		s.databases = append(s.databases, db)
 	}
 
