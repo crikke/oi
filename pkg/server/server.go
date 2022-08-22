@@ -30,7 +30,7 @@ type ServerConfiguration struct {
 
 type Server struct {
 	Configuration ServerConfiguration
-	databases     []*database.Database
+	databases     map[string]*database.Database
 	logger        *zap.Logger
 
 	pb.UnimplementedDatabaseManagerServiceServer
@@ -65,7 +65,7 @@ func (s Server) Start() {
 	if err != nil {
 		panic(err)
 	}
-	s.databases = make([]*database.Database, 0)
+	s.databases = make(map[string]*database.Database, 0)
 
 	var wg sync.WaitGroup
 
@@ -73,13 +73,13 @@ func (s Server) Start() {
 	for _, descriptor := range descriptors {
 
 		defer wg.Done()
-		db, err := database.Init(descriptor, s.Configuration.Database)
+		db, err := database.NewDatabase(descriptor, s.Configuration.Database)
 		if err != nil {
 			panic(err)
 		}
 
 		// once the database is initialized it is considered to be running and should accept requests
-		s.databases = append(s.databases, db)
+		s.databases[descriptor.Name] = db
 	}
 
 	wg.Wait()

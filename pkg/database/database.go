@@ -15,12 +15,14 @@ import (
 
 const DescriptorPrefix = "db_"
 
+// Descriptor contains information about the database
 type Descriptor struct {
 	Name string
 	// UUID
 	UUID uuid.UUID
 	// The most recent synced (written to SSTable) record.
 	LastAppliedRecord uint64
+	Stopped           bool
 }
 
 type Configuration struct {
@@ -37,38 +39,39 @@ type Configuration struct {
 type Database struct {
 	Memtable      *memtree.Memtree
 	Configuration Configuration
-	descriptor    Descriptor
+	descriptor    *Descriptor
 	writer        *commitlog.Writer
 	cancelFunc    func()
 }
 
-// Init Initializes the database from the descriptor.
+func NewDatabase(descriptor Descriptor, c Configuration) (*Database, error) {
+	db := &Database{
+		descriptor:    &descriptor,
+		Configuration: c,
+	}
+	return db, nil
+}
+
+// Start the database from the descriptor.
 //
 // When starting the database the commitlog writer will start
 // When the writer is started, records who havent been applied are replayed and inserted into the Memtable
-//
-func Init(descriptor Descriptor, c Configuration) (*Database, error) {
+func (db *Database) Start(descriptor Descriptor, c Configuration) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Log, descriptor.Name))
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Data, descriptor.Name))
-	// When starting Commitlog manager
-	db := &Database{cancelFunc: cancel}
-	mc, err := memtree.Initalize(c.Memtree)
 
-	if err != nil {
-		log.Fatal(err)
-	}
-	db.Memtable = &mc
-
+	db.Memtable = memtree.NewMemtree(c.Memtree.MaxSize)
+	db.cancelFunc = cancel
 	w, err := commitlog.NewWriter(ctx, db.Configuration.Directory.Log, int(db.Configuration.Commitlog.SegmentSize))
 
 	if err != nil {
-		return nil, fmt.Errorf("[Init] Fatal: %w", err)
+		return fmt.Errorf("[Init] Fatal: %w", err)
 	}
 	db.writer = w
 
 	db.ensureRecordsAreApplied(ctx)
-	return nil, nil
+	return nil
 
 }
 
@@ -97,9 +100,23 @@ func (d *Database) ensureRecordsAreApplied(ctx context.Context) error {
 	return nil
 }
 
-// Close flushes the memtable to disk
+// Close flushes the memtable to disk and is called when the server is shutting down.
 func (d *Database) Close() error {
 	d.cancelFunc()
+	return nil
+}
+
+// Stop the database manually. When server restarts, the database wont be started automatically.
+func (d *Database) Stop() error {
+	// even if database fails to close, set stopped to true.
+	// this is done so next time the server is starting the database will be stopped.
+	d.descriptor.Stopped = true
+
+	if err := d.Close(); err != nil {
+		// TODO: implement logger
+		panic(err)
+	}
+
 	return nil
 }
 

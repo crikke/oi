@@ -22,13 +22,13 @@ type Memtree struct {
 }
 
 // Initalizes a memtree for a database,
-func Initalize(cfg Configuration) (Memtree, error) {
+func NewMemtree(maxSize int) *Memtree {
 
-	return Memtree{
+	return &Memtree{
 		Size:    0,
-		MaxSize: cfg.MaxSize,
+		MaxSize: maxSize,
 		rbt:     RBTree{},
-	}, nil
+	}
 }
 
 // todo: calculate size in Kb of rbtree needs to be looked at
