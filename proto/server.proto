@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-option go_package = "pkg/server";
+option go_package = "pkg/server/proto";
+
+package DatabaseManager;
 
 message CreateDatabaseRequest {
     string name = 1 ;
@@ -32,7 +34,7 @@ message ResponseStatus {
 
 
 service DatabaseManagerService {
-    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
-    rpc StopDatabase(StopDatabaseRequest) returns (StopDatabaseResponse);
-    rpc StartDatabase(StartDatabaseRequest) returns (StartDatabaseResponse);
+    rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse) {}
+    rpc StopDatabase(StopDatabaseRequest) returns (StopDatabaseResponse) {}
+    rpc StartDatabase(StartDatabaseRequest) returns (StartDatabaseResponse) {}
 }

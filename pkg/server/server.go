@@ -1,12 +1,15 @@
 package server
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/crikke/oi/pkg/database"
+	pb "github.com/crikke/oi/pkg/server/proto"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -29,25 +32,35 @@ type Server struct {
 	Configuration ServerConfiguration
 	databases     []*database.Database
 	logger        *zap.Logger
+
+	pb.UnimplementedDatabaseManagerServiceServer
 }
 
-func NewServer() (*Server, error) {
+func NewServer(cfg ServerConfiguration) (*Server, error) {
 
 	logger, err := zap.NewProduction()
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{logger: logger}
 
+	logger.Log(zapcore.InfoLevel, "Starting Server...")
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	if err != nil {
+		panic(err)
+	}
+	s := &Server{logger: logger, Configuration: cfg}
 	grpcServer := grpc.NewServer()
-	RegisterDatabaseManagerServiceServer(grpcServer)
+	pb.RegisterDatabaseManagerServiceServer(grpcServer, s)
+	if err := grpcServer.Serve(lis); err != nil {
+		panic(err)
+	}
 
 	return s, nil
 }
 
 func (s Server) Start() {
 
-	s.logger.Log(zapcore.DebugLevel, "starting server")
 	descriptors, err := s.loadDatabaseDescriptors()
 	if err != nil {
 		panic(err)
@@ -86,6 +99,7 @@ func (s Server) loadDatabaseDescriptors() ([]database.Descriptor, error) {
 		if strings.HasPrefix(entry.Name(), database.DescriptorPrefix) {
 
 			f, err := os.Open(entry.Name())
+			defer f.Close()
 			if err != nil {
 				log.Fatal(err)
 			}

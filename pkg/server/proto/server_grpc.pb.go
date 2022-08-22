@@ -4,7 +4,7 @@
 // - protoc             v3.21.4
 // source: proto/server.proto
 
-package server
+package proto
 
 import (
 	context "context"
@@ -37,7 +37,7 @@ func NewDatabaseManagerServiceClient(cc grpc.ClientConnInterface) DatabaseManage
 
 func (c *databaseManagerServiceClient) CreateDatabase(ctx context.Context, in *CreateDatabaseRequest, opts ...grpc.CallOption) (*CreateDatabaseResponse, error) {
 	out := new(CreateDatabaseResponse)
-	err := c.cc.Invoke(ctx, "/DatabaseManagerService/CreateDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/DatabaseManager.DatabaseManagerService/CreateDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (c *databaseManagerServiceClient) CreateDatabase(ctx context.Context, in *C
 
 func (c *databaseManagerServiceClient) StopDatabase(ctx context.Context, in *StopDatabaseRequest, opts ...grpc.CallOption) (*StopDatabaseResponse, error) {
 	out := new(StopDatabaseResponse)
-	err := c.cc.Invoke(ctx, "/DatabaseManagerService/StopDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/DatabaseManager.DatabaseManagerService/StopDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *databaseManagerServiceClient) StopDatabase(ctx context.Context, in *Sto
 
 func (c *databaseManagerServiceClient) StartDatabase(ctx context.Context, in *StartDatabaseRequest, opts ...grpc.CallOption) (*StartDatabaseResponse, error) {
 	out := new(StartDatabaseResponse)
-	err := c.cc.Invoke(ctx, "/DatabaseManagerService/StartDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/DatabaseManager.DatabaseManagerService/StartDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func _DatabaseManagerService_CreateDatabase_Handler(srv interface{}, ctx context
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/DatabaseManagerService/CreateDatabase",
+		FullMethod: "/DatabaseManager.DatabaseManagerService/CreateDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseManagerServiceServer).CreateDatabase(ctx, req.(*CreateDatabaseRequest))
@@ -127,7 +127,7 @@ func _DatabaseManagerService_StopDatabase_Handler(srv interface{}, ctx context.C
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/DatabaseManagerService/StopDatabase",
+		FullMethod: "/DatabaseManager.DatabaseManagerService/StopDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseManagerServiceServer).StopDatabase(ctx, req.(*StopDatabaseRequest))
@@ -145,7 +145,7 @@ func _DatabaseManagerService_StartDatabase_Handler(srv interface{}, ctx context.
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/DatabaseManagerService/StartDatabase",
+		FullMethod: "/DatabaseManager.DatabaseManagerService/StartDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DatabaseManagerServiceServer).StartDatabase(ctx, req.(*StartDatabaseRequest))
@@ -157,7 +157,7 @@ func _DatabaseManagerService_StartDatabase_Handler(srv interface{}, ctx context.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var DatabaseManagerService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "DatabaseManagerService",
+	ServiceName: "DatabaseManager.DatabaseManagerService",
 	HandlerType: (*DatabaseManagerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

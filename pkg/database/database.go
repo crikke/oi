@@ -148,6 +148,16 @@ func DecodeDescriptor(r io.Reader) (Descriptor, error) {
 	return m, nil
 }
 
+func EncodeDescriptor(w io.Writer, d Descriptor) error {
+
+	enc := gob.NewEncoder(w)
+
+	if err := enc.Encode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ensureDirExists(dir string) {
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
