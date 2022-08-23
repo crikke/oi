@@ -70,25 +70,12 @@ func NewDatabase(descriptorPath string, c Configuration) (*Database, error) {
 //
 // When starting the database the commitlog writer will start
 // When the writer is started, records who havent been applied are replayed and inserted into the Memtable
-func (db *Database) Start(descriptorPath string, c Configuration) error {
-
-	f, err := os.Open(descriptorPath)
-	if err != nil {
-		return err
-	}
-
-	descriptor, err := DecodeDescriptor(f)
-
-	if err != nil {
-		return err
-	}
+func (db *Database) Start() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Log, descriptor.Name))
-	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Data, descriptor.Name))
-	db.Descriptor = &descriptor
-	db.descriptorPath = descriptorPath
-	db.memtable = memtree.NewMemtree(c.Memtree.MaxSize)
+	ensureDirExists(fmt.Sprintf("%s/%s", db.configuration.Directory.Log, db.Descriptor.Name))
+	ensureDirExists(fmt.Sprintf("%s/%s", db.configuration.Directory.Data, db.Descriptor.Name))
+	db.memtable = memtree.NewMemtree(db.configuration.Memtree.MaxSize)
 	db.cancelFunc = cancel
 	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize))
 

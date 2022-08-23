@@ -83,8 +83,10 @@ func (s Server) Start() {
 			panic(err)
 		}
 
-		// once the database is initialized it is considered to be running and should accept requests
 		s.databases[db.Descriptor.Name] = db
+		if !db.Descriptor.Stopped {
+			db.Start()
+		}
 	}
 
 	wg.Wait()
