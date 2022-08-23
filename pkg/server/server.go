@@ -1,10 +1,15 @@
 package server
 
+// databasemanager needs to keep track
+// of existing databases
+// when reqest for creating new database, look up if db exist in databasemanager
+// then the actual operation exists in the database package
+
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"sync"
 
@@ -79,13 +84,13 @@ func (s Server) Start() {
 		}
 
 		// once the database is initialized it is considered to be running and should accept requests
-		s.databases[descriptor.Name] = db
+		s.databases[db.Descriptor.Name] = db
 	}
 
 	wg.Wait()
 }
 
-func (s Server) loadDatabaseDescriptors() ([]database.Descriptor, error) {
+func (s Server) loadDatabaseDescriptors() ([]string, error) {
 	ensureDirExists(s.Configuration.Directory.Metadata)
 
 	entries, err := os.ReadDir(s.Configuration.Directory.Metadata)
@@ -94,21 +99,11 @@ func (s Server) loadDatabaseDescriptors() ([]database.Descriptor, error) {
 		panic(err)
 	}
 
-	md := make([]database.Descriptor, 0)
+	md := make([]string, 0)
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), database.DescriptorPrefix) {
 
-			f, err := os.Open(entry.Name())
-			defer f.Close()
-			if err != nil {
-				log.Fatal(err)
-			}
-			m, err := database.DecodeDescriptor(f)
-
-			if err != nil {
-				log.Fatal(err)
-			}
-			md = append(md, m)
+			md = append(md, path.Join(s.Configuration.Directory.Metadata, entry.Name()))
 		}
 	}
 	return md, nil

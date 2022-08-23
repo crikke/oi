@@ -15,7 +15,7 @@ import (
 
 const DescriptorPrefix = "db_"
 
-// Descriptor contains information about the database
+// Descriptor holds metadata about the database
 type Descriptor struct {
 	Name string
 	// UUID
@@ -37,17 +37,31 @@ type Configuration struct {
 }
 
 type Database struct {
-	Memtable      *memtree.Memtree
-	Configuration Configuration
-	descriptor    *Descriptor
-	writer        *commitlog.Writer
-	cancelFunc    func()
+	memtable       *memtree.Memtree
+	configuration  Configuration
+	Descriptor     *Descriptor
+	writer         *commitlog.Writer
+	cancelFunc     func()
+	descriptorPath string
 }
 
-func NewDatabase(descriptor Descriptor, c Configuration) (*Database, error) {
+func NewDatabase(descriptorPath string, c Configuration) (*Database, error) {
+
+	f, err := os.Open(descriptorPath)
+	defer f.Close()
+
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := DecodeDescriptor(f)
+	if err != nil {
+		return nil, err
+	}
 	db := &Database{
-		descriptor:    &descriptor,
-		Configuration: c,
+		Descriptor:     &m,
+		configuration:  c,
+		descriptorPath: descriptorPath,
 	}
 	return db, nil
 }
@@ -56,14 +70,27 @@ func NewDatabase(descriptor Descriptor, c Configuration) (*Database, error) {
 //
 // When starting the database the commitlog writer will start
 // When the writer is started, records who havent been applied are replayed and inserted into the Memtable
-func (db *Database) Start(descriptor Descriptor, c Configuration) error {
+func (db *Database) Start(descriptorPath string, c Configuration) error {
+
+	f, err := os.Open(descriptorPath)
+	if err != nil {
+		return err
+	}
+
+	descriptor, err := DecodeDescriptor(f)
+
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Log, descriptor.Name))
 	ensureDirExists(fmt.Sprintf("%s/%s", c.Directory.Data, descriptor.Name))
-
-	db.Memtable = memtree.NewMemtree(c.Memtree.MaxSize)
+	db.Descriptor = &descriptor
+	db.descriptorPath = descriptorPath
+	db.memtable = memtree.NewMemtree(c.Memtree.MaxSize)
 	db.cancelFunc = cancel
-	w, err := commitlog.NewWriter(ctx, db.Configuration.Directory.Log, int(db.Configuration.Commitlog.SegmentSize))
+	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize))
 
 	if err != nil {
 		return fmt.Errorf("[Init] Fatal: %w", err)
@@ -77,8 +104,8 @@ func (db *Database) Start(descriptor Descriptor, c Configuration) error {
 
 func (d *Database) ensureRecordsAreApplied(ctx context.Context) error {
 
-	if d.descriptor.LastAppliedRecord > 0 {
-		segmentFiles, err := commitlog.GetTrailingSegments(d.Configuration.Directory.Log, d.descriptor.LastAppliedRecord)
+	if d.Descriptor.LastAppliedRecord > 0 {
+		segmentFiles, err := commitlog.GetTrailingSegments(d.configuration.Directory.Log, d.Descriptor.LastAppliedRecord)
 
 		if err != nil {
 			return fmt.Errorf("[ensureRecordsAreApplied] fatal: %w", err)
@@ -91,7 +118,7 @@ func (d *Database) ensureRecordsAreApplied(ctx context.Context) error {
 				log.Println("cancelled applying records")
 				return nil
 			default:
-				if err := replaySegment(ctx, segment, d, d.descriptor); err != nil {
+				if err := replaySegment(ctx, segment, d, *d.Descriptor); err != nil {
 					return fmt.Errorf("[ensureRecordsAreApplied] fatal: %w", err)
 				}
 			}
@@ -110,7 +137,7 @@ func (d *Database) Close() error {
 func (d *Database) Stop() error {
 	// even if database fails to close, set stopped to true.
 	// this is done so next time the server is starting the database will be stopped.
-	d.descriptor.Stopped = true
+	d.Descriptor.Stopped = true
 
 	if err := d.Close(); err != nil {
 		// TODO: implement logger
@@ -146,7 +173,7 @@ func replaySegment(ctx context.Context, s os.DirEntry, db *Database, descriptor 
 			}
 			m := &commitlog.Mutation{}
 			m.UnmarshalBinary(record.Data)
-			db.Memtable.Put(string(m.Key), m.Value)
+			db.memtable.Put(string(m.Key), m.Value)
 
 		}
 	}
