@@ -15,12 +15,12 @@ func TestRBInsert(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		keys   []string
+		keys   [][]byte
 		expect []mocknode
 	}{
 		{
 			name: "test insert case 3 left line",
-			keys: []string{"c", "b", "a"},
+			keys: [][]byte{[]byte("c"), []byte("b"), []byte("a")},
 			expect: []mocknode{
 				{"b", black},
 				{"a", red},
@@ -29,7 +29,7 @@ func TestRBInsert(t *testing.T) {
 		},
 		{
 			name: "test case 1",
-			keys: []string{"bb", "aa", "cc", "a"},
+			keys: [][]byte{[]byte("bb"), []byte("aa"), []byte("cc"), []byte("a")},
 			expect: []mocknode{
 				{"bb", red},
 				{"aa", black},
@@ -45,7 +45,7 @@ func TestRBInsert(t *testing.T) {
 			//      bb
 			//    aa   cc
 			name: "test case 2",
-			keys: []string{"cc", "aa", "bb"},
+			keys: [][]byte{[]byte("cc"), []byte("aa"), []byte("bb")},
 			expect: []mocknode{
 				{"bb", black},
 				{"aa", red},
@@ -66,9 +66,9 @@ func TestRBInsert(t *testing.T) {
 			//frisit all nodes from left to right
 			traverseTree(
 				t,
-				func(n *node, i int) {
+				func(n *Node, i int) {
 					assert.Equal(t, test.expect[i].color, n.nodecolor)
-					assert.Equal(t, test.expect[i].key, n.key)
+					assert.Equal(t, []byte(test.expect[i].key), n.Key)
 				},
 				rbt.Root,
 				&i,
@@ -77,17 +77,17 @@ func TestRBInsert(t *testing.T) {
 	}
 }
 
-func traverseTree(t *testing.T, assert func(*node, int), n *node, idx *int) {
+func traverseTree(t *testing.T, assert func(*Node, int), n *Node, idx *int) {
 
 	assert(n, *idx)
 
-	if n.left != nil {
+	if n.Left != nil {
 		*idx++
-		traverseTree(t, assert, n.left, idx)
+		traverseTree(t, assert, n.Left, idx)
 	}
 
-	if n.right != nil {
+	if n.Right != nil {
 		*idx++
-		traverseTree(t, assert, n.right, idx)
+		traverseTree(t, assert, n.Right, idx)
 	}
 }

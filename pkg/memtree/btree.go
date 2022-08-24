@@ -1,8 +1,6 @@
 package memtree
 
-import (
-	"strings"
-)
+import "bytes"
 
 type color bool
 
@@ -16,18 +14,13 @@ type Node struct {
 	Left      *Node
 	Right     *Node
 	parent    *Node
-	Key       string
+	Key       []byte
 	Value     []byte
 	nodecolor color
 }
 
-func (n Node) string() string {
-	return n.Key
-
-}
-
 // When writing a entry, in addition to storing it to disk, index the location of the key
-func (t *RBTree) Insert(key string, value []byte) {
+func (t *RBTree) Insert(key, value []byte) {
 
 	if t.Root == nil {
 		t.Root = &Node{
@@ -49,7 +42,7 @@ func (t *RBTree) Insert(key string, value []byte) {
 	loop := true
 	for loop {
 		parent = n
-		switch strings.Compare(key, n.Key) {
+		switch bytes.Compare(key, n.Key) {
 
 		case -1:
 			if n.Left != nil {
@@ -59,7 +52,6 @@ func (t *RBTree) Insert(key string, value []byte) {
 				loop = false
 			}
 
-			break
 		case 0:
 			// the key has been updated TODO
 			return
@@ -70,7 +62,6 @@ func (t *RBTree) Insert(key string, value []byte) {
 				n.Right = newNode
 				loop = false
 			}
-			break
 		}
 	}
 	newNode.parent = parent

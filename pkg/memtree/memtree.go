@@ -33,7 +33,7 @@ func NewMemtree(maxSize int) *Memtree {
 
 // todo: calculate size in Kb of rbtree needs to be looked at
 // for now checking key + value size and storing it is suffient, but should look if there is a better way to do it later.
-func (m *Memtree) Put(key string, value []byte) error {
+func (m *Memtree) Put(key, value []byte) error {
 
 	if m.Size+len(value)+len(key) > m.MaxSize {
 		return errors.New(ErrMaxSizeReached)
@@ -45,6 +45,6 @@ func (m *Memtree) Put(key string, value []byte) error {
 	return nil
 }
 
-func (m Memtree) Get(key string) ([]byte, error) {
-	return nil, nil
+func (m Memtree) Get(key []byte) ([]byte, bool) {
+	return nil, false
 }

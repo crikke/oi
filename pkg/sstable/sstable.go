@@ -18,6 +18,8 @@ type SSTable struct {
 	summary io.Reader
 }
 
+func 
+
 // opens a SSTable for reading
 // path is where sstable is stored. file ending must be omitted
 func Open(path string) (s *SSTable, err error) {
@@ -103,6 +105,7 @@ func New(name string, m memtree.RBTree) error {
 	defer data.Close()
 
 	idx, err := os.Create(fmt.Sprintf("%s.idx", name))
+
 	if err != nil {
 		return err
 	}

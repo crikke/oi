@@ -41,10 +41,10 @@ func TestCreateSSTableIndex(t *testing.T) {
 	rbt := memtree.RBTree{}
 
 	// assert that entries are stored in order
-	rbt.Insert("bbb", []byte("222"))
-	rbt.Insert("aaa", []byte("111"))
-	rbt.Insert("ddd", []byte("444"))
-	rbt.Insert("ccc", []byte("333"))
+	rbt.Insert([]byte("bbb"), []byte("222"))
+	rbt.Insert([]byte("aaa"), []byte("111"))
+	rbt.Insert([]byte("ddd"), []byte("444"))
+	rbt.Insert([]byte("ccc"), []byte("333"))
 
 	iw := &bytes.Buffer{}
 	data := &bytes.Buffer{}
@@ -79,10 +79,10 @@ func TestDecodeSSTable(t *testing.T) {
 	rbt := memtree.RBTree{}
 
 	// assert that entries are stored in order
-	rbt.Insert("bbb", []byte("222"))
-	rbt.Insert("aaa", []byte("111"))
-	rbt.Insert("ddd", []byte("444"))
-	rbt.Insert("ccc", []byte("333"))
+	rbt.Insert([]byte("bbb"), []byte("222"))
+	rbt.Insert([]byte("aaa"), []byte("111"))
+	rbt.Insert([]byte("ddd"), []byte("444"))
+	rbt.Insert([]byte("ccc"), []byte("333"))
 
 	n := fmt.Sprintf("/tmp/%s", uuid.NewString())
 

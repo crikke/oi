@@ -1,17 +1,22 @@
 syntax = "proto3";
+option go_package = "pkg/server/proto";
 
+package server;
 
 message PutRequest {
     string key  = 1;
     bytes value = 2;
+    string database = 3;
 }
 
 message GetRequest {
     string key = 1;
+    string database = 2;
+
 }
 
 message GetResponse {
-    ResponseStatus status = 1;
+    server.ResponseStatus status = 1;
     bytes value = 2;
 }
 
@@ -21,6 +26,6 @@ message ResponseStatus {
 }
 
 service Database {
-    rpc Put(PutRequest) returns (ResponseStatus);
-    rpc Get(GetRequest) returns (GetResponse);
+    rpc Put(PutRequest) returns (ResponseStatus) {}
+    rpc Get(GetRequest) returns (GetResponse) {}
 }

@@ -4,35 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/crikke/oi/pkg/database"
 	"github.com/crikke/oi/pkg/server/proto"
-	"github.com/google/uuid"
 	"go.uber.org/zap/zapcore"
 )
+
+// db manager needs to hold a map of all databases
 
 func (s *Server) CreateDatabase(ctx context.Context, in *proto.CreateDatabaseRequest) (*proto.CreateDatabaseResponse, error) {
 
 	s.logger.Log(zapcore.InfoLevel, fmt.Sprintf("creating database '%s'", in.GetName()))
-	entries, err := s.loadDatabaseDescriptors()
+	if _, exist := s.databases[in.GetName()]; exist {
+		return nil, fmt.Errorf("database with name '%s' already exist", in.GetName())
+	}
+
+	db, err := database.CreateDatabase(s.Configuration.Directory.Metadata, in.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("[CreateDatabase] fatal: %w", err)
-	}
-	for _, descriptor := range entries {
-		if descriptor.Name == in.GetName() {
-			return nil, errors.New(fmt.Sprintf("Database with name '%s' already exist", in.GetName()))
-		}
+		return nil, err
 	}
 
-	d := database.Descriptor{
-		Name: in.GetName(),
-		UUID: uuid.New(),
-	}
+	s.databases[db.Descriptor.Name] = db
 
-	f, err := os.OpenFile(fmt.Sprintf("%s%s", d.UUID.String(), database.DescriptorPrefix), os.O_CREATE|os.O_APPEND, 660)
-	defer f.Close()
-	if err := database.EncodeDescriptor(f, d); err != nil {
+	if err = db.Start(); err != nil {
 		return nil, err
 	}
 

@@ -46,7 +46,7 @@ func (m *Mutation) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func makeMutation(key, value []byte, tombstone bool) Mutation {
+func NewMutation(key, value []byte, tombstone bool) Mutation {
 
 	data := Mutation{
 		Value:       value,

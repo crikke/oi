@@ -78,7 +78,7 @@ func (s Server) Start() {
 	for _, descriptor := range descriptors {
 
 		defer wg.Done()
-		db, err := database.NewDatabase(descriptor, s.Configuration.Database)
+		db, err := database.OpenDatabase(descriptor, s.Configuration.Database)
 		if err != nil {
 			panic(err)
 		}

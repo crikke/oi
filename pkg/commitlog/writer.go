@@ -16,12 +16,15 @@ type Writer struct {
 
 	// size of current segment
 	size           int32
-	writerChannel  chan Record
+	writerChannel  chan Mutation
 	logDir         string
 	maxSegmentSize int
+	// CallbackFn is called after the writeloop has successfully written the record.
+	// This is used to insert the mutation into the memtree
+	callbackFn func(m Mutation) error
 }
 
-func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) (*Writer, error) {
+func NewWriter(ctx context.Context, logDir string, maxSegmentSize int, callbackFn func(m Mutation) error) (*Writer, error) {
 
 	f, err := GetLatestSegment(logDir, maxSegmentSize)
 
@@ -36,6 +39,10 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) (*Writer,
 	}
 
 	segmentNumber, err := parseSegmentName(f.Name())
+	if err != nil {
+		return nil, fmt.Errorf("[New Writer] fatal: %w", err)
+	}
+
 	records, err := ReadLogSegment(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("[New Writer] fatal: %w", err)
@@ -43,13 +50,14 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) (*Writer,
 
 	w := &Writer{
 		mu:             sync.Mutex{},
-		writerChannel:  make(chan Record),
+		writerChannel:  make(chan Mutation),
 		file:           f,
 		size:           int32(fi.Size()),
 		logDir:         logDir,
 		counter:        uint32(len(records)) - 1,
 		maxSegmentSize: maxSegmentSize,
 		segmentNumber:  uint32(segmentNumber),
+		callbackFn:     callbackFn,
 	}
 
 	go w.writeLoop(ctx)
@@ -58,18 +66,7 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int) (*Writer,
 
 func (w *Writer) Write(m Mutation) error {
 
-	data, err := m.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	r := Record{
-		Data:       data,
-		Crc:        crc32.ChecksumIEEE(data),
-		DataLength: uint32(len(data)),
-	}
-
-	w.writerChannel <- r
+	w.writerChannel <- m
 	return nil
 }
 
@@ -78,7 +75,18 @@ func (w *Writer) writeLoop(ctx context.Context) error {
 	for {
 		select {
 
-		case r := <-w.writerChannel:
+		case m := <-w.writerChannel:
+
+			data, err := m.MarshalBinary()
+			if err != nil {
+				return err
+			}
+
+			r := Record{
+				Data:       data,
+				Crc:        crc32.ChecksumIEEE(data),
+				DataLength: uint32(len(data)),
+			}
 
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -87,7 +95,6 @@ func (w *Writer) writeLoop(ctx context.Context) error {
 			r.LSN = uint64(w.segmentNumber + w.counter)
 			w.counter++
 
-			data, err := r.MarshalBinary()
 			if err != nil {
 				return fmt.Errorf("[writeLoop] error: %w", err)
 			}
@@ -106,8 +113,12 @@ func (w *Writer) writeLoop(ctx context.Context) error {
 
 			w.size += int32(l)
 
+			if err := w.callbackFn(m); err != nil {
+				return err
+			}
+
 		case <-ctx.Done():
-			break
+			return nil
 
 		}
 	}
@@ -119,7 +130,7 @@ func (w *Writer) nextSegment() error {
 	w.file.Close()
 	w.segmentNumber += 1
 	name := fmt.Sprintf("%s%d%s", LogPrefix, w.segmentNumber, LogSuffix)
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND, 660)
+	f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND, 0660)
 	if err != nil {
 		return fmt.Errorf("[nextSegment] internal error: %w", err)
 	}

@@ -3,10 +3,12 @@ package database
 import (
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/crikke/oi/pkg/commitlog"
 	"github.com/crikke/oi/pkg/memtree"
@@ -45,16 +47,48 @@ type Database struct {
 	descriptorPath string
 }
 
-func NewDatabase(descriptorPath string, c Configuration) (*Database, error) {
+func CreateDatabase(descriptorDir, name string) (*Database, error) {
+	d := Descriptor{
+		Name: name,
+		UUID: uuid.New(),
+	}
 
-	f, err := os.Open(descriptorPath)
-	defer f.Close()
+	filename := fmt.Sprintf("%s%s", d.UUID.String(), DescriptorPrefix)
+
+	if _, err := os.Stat(filepath.Join(descriptorDir, filename)); !errors.Is(err, os.ErrNotExist) {
+
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, errors.New("descriptor exists")
+	}
+
+	f, err := os.OpenFile(filepath.Join(descriptorDir, filename), os.O_CREATE|os.O_APPEND, 0660)
 
 	if err != nil {
 		return nil, err
 	}
 
-	m, err := DecodeDescriptor(f)
+	if err := encodeDescriptor(f, d); err != nil {
+		return nil, err
+	}
+
+	if err = f.Close(); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func OpenDatabase(descriptorPath string, c Configuration) (*Database, error) {
+
+	f, err := os.Open(descriptorPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	m, err := decodeDescriptor(f)
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +96,9 @@ func NewDatabase(descriptorPath string, c Configuration) (*Database, error) {
 		Descriptor:     &m,
 		configuration:  c,
 		descriptorPath: descriptorPath,
+	}
+	if err = f.Close(); err != nil {
+		return nil, err
 	}
 	return db, nil
 }
@@ -77,7 +114,7 @@ func (db *Database) Start() error {
 	ensureDirExists(fmt.Sprintf("%s/%s", db.configuration.Directory.Data, db.Descriptor.Name))
 	db.memtable = memtree.NewMemtree(db.configuration.Memtree.MaxSize)
 	db.cancelFunc = cancel
-	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize))
+	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize), db.writeToMemoryTree)
 
 	if err != nil {
 		return fmt.Errorf("[Init] Fatal: %w", err)
@@ -134,6 +171,27 @@ func (d *Database) Stop() error {
 	return nil
 }
 
+func (db *Database) Put(ctx context.Context, key, value []byte) error {
+
+	m := commitlog.NewMutation(key, value, false)
+	return db.writer.Write(m)
+}
+
+func (db *Database) writeToMemoryTree(m commitlog.Mutation) error {
+	return db.memtable.Put(m.Key, m.Value)
+}
+
+func (db *Database) Get(ctx context.Context, key []byte) ([]byte, error) {
+
+	value, ok := db.memtable.Get(key)
+
+	if !ok {
+
+	}
+
+	return value, nil
+}
+
 func replaySegment(ctx context.Context, s os.DirEntry, db *Database, descriptor Descriptor) error {
 
 	f, err := os.Open(s.Name())
@@ -151,7 +209,7 @@ func replaySegment(ctx context.Context, s os.DirEntry, db *Database, descriptor 
 
 		select {
 		case <-ctx.Done():
-			break
+			return nil
 		default:
 
 			// skip applied records
@@ -160,14 +218,14 @@ func replaySegment(ctx context.Context, s os.DirEntry, db *Database, descriptor 
 			}
 			m := &commitlog.Mutation{}
 			m.UnmarshalBinary(record.Data)
-			db.memtable.Put(string(m.Key), m.Value)
+			db.memtable.Put(m.Key, m.Value)
 
 		}
 	}
 	return nil
 }
 
-func DecodeDescriptor(r io.Reader) (Descriptor, error) {
+func decodeDescriptor(r io.Reader) (Descriptor, error) {
 
 	m := Descriptor{}
 	dec := gob.NewDecoder(r)
@@ -179,7 +237,7 @@ func DecodeDescriptor(r io.Reader) (Descriptor, error) {
 	return m, nil
 }
 
-func EncodeDescriptor(w io.Writer, d Descriptor) error {
+func encodeDescriptor(w io.Writer, d Descriptor) error {
 
 	enc := gob.NewEncoder(w)
 
