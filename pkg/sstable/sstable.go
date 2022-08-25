@@ -18,8 +18,6 @@ type SSTable struct {
 	summary io.Reader
 }
 
-func 
-
 // opens a SSTable for reading
 // path is where sstable is stored. file ending must be omitted
 func Open(path string) (s *SSTable, err error) {
