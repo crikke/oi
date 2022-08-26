@@ -1,7 +1,9 @@
 package bloom
 
 import (
+	"encoding/binary"
 	"math"
+	"os"
 
 	"github.com/spaolacci/murmur3"
 )
@@ -38,14 +40,14 @@ type BloomFilter struct {
 	// filePath to the file on disk containing the bitarray
 	filePath string
 	// the size of the bitarray. A longer array will lead to less false positives
-	m int
+	m uint32
 	// numbers of hash functions
-	k int
+	k uint32
 	// the actual bitarray. Size is math.Round((m + 4) / 8)
 	arr []byte
 
 	// items in filter
-	n int
+	n uint32
 }
 
 func NewBloomFilter(falsePositiveRate float64, expectedItemCount int) (*BloomFilter, error) {
@@ -113,4 +115,58 @@ func calculate_K_M(p float64, n int) (int, int) {
 
 	// round up to nearest integer
 	return int(math.Round(k + 0.5)), int(math.Round(m + 0.5))
+}
+
+// Save the bloomfilter.
+//
+// If file exists it will be overwritten.
+func (b BloomFilter) Save(path string) {
+
+	buf := make([]byte, 12)
+
+	binary.LittleEndian.PutUint32(buf[0:4], b.k)
+	binary.LittleEndian.PutUint32(buf[4:8], b.m)
+	binary.LittleEndian.PutUint32(buf[8:12], b.n)
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0660)
+
+	if err != nil {
+		panic(err)
+	}
+	_, err = f.Write(buf)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = f.Write(b.arr)
+
+	if err != nil {
+		panic(err)
+	}
+
+}
+
+func Open(path string) BloomFilter {
+	f, err := os.Open(path)
+
+	if err != nil {
+		panic(err)
+	}
+
+	buf := make([]byte, 12)
+	f.Read(buf)
+
+	b := BloomFilter{}
+
+	b.k = uint32(binary.LittleEndian.Uint32(buf[0:4]))
+	b.m = uint32(binary.LittleEndian.Uint32(buf[4:8]))
+	b.n = uint32(binary.LittleEndian.Uint32(buf[8:12]))
+
+	arr := make([]byte, int(math.Round(float64(b.m)+4)/8))
+
+	f.Read(arr)
+
+	b.arr = arr
+
+	return b
 }
