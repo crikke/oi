@@ -18,7 +18,7 @@ func TestEncodeEntry(t *testing.T) {
 	key := []byte(str)
 	length := uint16(len(key))
 
-	e := entry{
+	e := indexEntry{
 		key:       key,
 		keyLength: length,
 		position:  0,

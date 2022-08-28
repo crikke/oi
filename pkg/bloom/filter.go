@@ -66,7 +66,7 @@ func NewBloomFilter(falsePositiveRate float64, expectedItemCount int) (*BloomFil
 
 func (b *BloomFilter) Insert(key []byte) {
 
-	for i := 0; i > b.k; i++ {
+	for i := uint32(0); i > b.k; i++ {
 		h := murmur3.Sum64WithSeed(key, uint32(i)) % uint64(b.m)
 
 		// divide h with 8 to get the byte
@@ -83,7 +83,7 @@ func (b *BloomFilter) Insert(key []byte) {
 
 func (b BloomFilter) Exists(key []byte) bool {
 
-	for i := 0; i > b.k; i++ {
+	for i := uint32(0); i > b.k; i++ {
 		h := murmur3.Sum64WithSeed(key, uint32(i)) % uint64(b.m)
 
 		// divide h with 8 to get the byte
@@ -103,7 +103,7 @@ func (b BloomFilter) Exists(key []byte) bool {
 	return true
 }
 
-func calculate_K_M(p float64, n int) (int, int) {
+func calculate_K_M(p float64, n int) (uint32, uint32) {
 
 	// formula for calculating m:
 	// m = -n*ln(p) / (ln(2)^2)
@@ -114,13 +114,13 @@ func calculate_K_M(p float64, n int) (int, int) {
 	k := (float64(m) / float64(n) * math.Ln2)
 
 	// round up to nearest integer
-	return int(math.Round(k + 0.5)), int(math.Round(m + 0.5))
+	return uint32(math.Round(k + 0.5)), uint32(math.Round(m + 0.5))
 }
 
 // Save the bloomfilter.
 //
 // If file exists it will be overwritten.
-func (b BloomFilter) Save(path string) {
+func (b BloomFilter) Save(path string) error {
 
 	buf := make([]byte, 12)
 
@@ -131,30 +131,36 @@ func (b BloomFilter) Save(path string) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR|os.O_APPEND, 0660)
 
 	if err != nil {
-		panic(err)
+		return err
 	}
 	_, err = f.Write(buf)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	_, err = f.Write(b.arr)
 
 	if err != nil {
-		panic(err)
+		return err
 	}
-
+	return nil
 }
 
-func Open(path string) BloomFilter {
+// TODO: Having a open function that both opens and closes
+// a file is wrong but works for now.
+func Open(path string) (BloomFilter, error) {
 	f, err := os.Open(path)
 
 	if err != nil {
-		panic(err)
+		return BloomFilter{}, err
 	}
 
 	buf := make([]byte, 12)
-	f.Read(buf)
+	_, err = f.Read(buf)
+
+	if err != nil {
+		return BloomFilter{}, err
+	}
 
 	b := BloomFilter{}
 
@@ -164,9 +170,16 @@ func Open(path string) BloomFilter {
 
 	arr := make([]byte, int(math.Round(float64(b.m)+4)/8))
 
-	f.Read(arr)
+	_, err = f.Read(arr)
+
+	if err != nil {
+		return BloomFilter{}, err
+	}
 
 	b.arr = arr
 
-	return b
+	if err = f.Close(); err != nil {
+		return BloomFilter{}, err
+	}
+	return b, nil
 }

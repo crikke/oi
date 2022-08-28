@@ -3,12 +3,13 @@ package sstable
 import (
 	"bytes"
 	"crypto/md5"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
+	"github.com/crikke/oi/pkg/bloom"
 	"github.com/crikke/oi/pkg/memtree"
 )
 
@@ -18,53 +19,33 @@ type SSTable struct {
 	summary io.Reader
 }
 
-// opens a SSTable for reading
-// path is where sstable is stored. file ending must be omitted
-func Open(path string) (s *SSTable, err error) {
+// ErrKeyNotFound if key is not found in sstable
+var ErrKeyNotFound = errors.New("key not found in SSTable")
 
-	s = &SSTable{}
+func Get(dir string, key []byte) ([]byte, error) {
 
-	data, err := os.Open(fmt.Sprintf("%s.data", path))
-
-	if err != nil {
-		return nil, err
-	}
-
-	s.data = data
-
-	idx, err := os.Open(fmt.Sprintf("%s.idx", path))
+	filter, err := bloom.Open(filepath.Join(dir, "bloom.db"))
 
 	if err != nil {
 		return nil, err
 	}
 
-	s.index = idx
+	if !filter.Exists(key) {
+		return nil, ErrKeyNotFound
+	}
 
-	return
+	summary, err := os.Open(filepath.Join(dir, "summary.db"))
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }
 
 func (s *SSTable) Close() {
 	s.index.Close()
 	s.data.Close()
 	s.data.Close()
-}
-
-// A Sorted string table cosist of an index file (.idx) and the corresponding data (.db)
-// The SSTable is immutable and can only be read from.
-// TODO: Create Summary file
-type index struct {
-	entries []entry
-	length  uint32
-}
-
-// size of each entry should be:
-// 16bit (key length) + (key length * 8)  + 32bit(position)
-// key could be shorter than 16 bytes
-type entry struct {
-	key          []byte
-	keyLength    uint16
-	position     uint32
-	entityLength uint16
 }
 
 // calculate the checksum for the file, this will be stored somewhere and is used to compare the index & data file
@@ -161,11 +142,11 @@ func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
 		return err
 	}
 
-	e := entry{
-		position:     i.length,
-		key:          []byte(n.Key),
-		keyLength:    uint16(len(n.Key)),
-		entityLength: uint16(l),
+	e := indexEntry{
+		position:   i.length,
+		key:        []byte(n.Key),
+		keyLength:  uint16(len(n.Key)),
+		dataLength: uint16(l),
 	}
 
 	if err = encodeIndexEntry(iw, e); err != nil {
@@ -176,60 +157,6 @@ func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
 	i.length += uint32(l)
 
 	return nil
-}
-
-func encodeIndexEntry(iw io.Writer, e entry) error {
-
-	kl := make([]byte, 2)
-	pos := make([]byte, 4)
-	entityLength := make([]byte, 2)
-
-	binary.LittleEndian.PutUint16(kl, e.keyLength)
-	binary.LittleEndian.PutUint32(pos, e.position)
-	binary.LittleEndian.PutUint16(entityLength, e.entityLength)
-
-	if _, err := iw.Write(kl); err != nil {
-		return err
-	}
-
-	if _, err := iw.Write(e.key); err != nil {
-		return err
-	}
-	if _, err := iw.Write(pos); err != nil {
-		return err
-	}
-
-	if _, err := iw.Write(entityLength); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func decodeEntry(idx io.Reader, e *entry) (int, error) {
-
-	kl := make([]byte, 2)
-	if _, err := idx.Read(kl); err != nil {
-		return 0, err
-	}
-
-	e.keyLength = binary.LittleEndian.Uint16(kl)
-	key := make([]byte, e.keyLength)
-
-	keyBytesRead, err := idx.Read(key)
-	if err != nil {
-		return 0, err
-	}
-
-	pos := make([]byte, 4)
-	if _, err := idx.Read(pos); err != nil {
-		return 0, err
-	}
-
-	e.key = key
-	e.position = binary.LittleEndian.Uint32(pos)
-
-	return 6 + keyBytesRead, nil
 }
 
 func (s SSTable) Get(key []byte) ([]byte, error) {
@@ -254,10 +181,10 @@ func (s SSTable) Get(key []byte) ([]byte, error) {
 // It will continue search until end or bytes read > length, in which key does not exist
 // if length is -1 it will keep scanning until EOF
 
-func (s SSTable) scan(offset, length int64, key []byte) (entry, error) {
+func (s SSTable) scan(offset, length int64, key []byte) (indexEntry, error) {
 
 	if _, err := s.index.Seek(offset, 0); err != nil {
-		return entry{}, err
+		return indexEntry{}, err
 	}
 
 	bytesRead := int64(0)
@@ -267,14 +194,14 @@ func (s SSTable) scan(offset, length int64, key []byte) (entry, error) {
 			break
 		}
 
-		e := &entry{}
+		e := &indexEntry{}
 
-		n, err := decodeEntry(s.index, e)
+		n, err := decodeIndexEntry(s.index, e)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return entry{}, err
+			return indexEntry{}, err
 		}
 
 		bytesRead += int64(n)
@@ -284,5 +211,5 @@ func (s SSTable) scan(offset, length int64, key []byte) (entry, error) {
 		}
 	}
 
-	return entry{}, errors.New("not found")
+	return indexEntry{}, errors.New("not found")
 }
