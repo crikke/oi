@@ -12,6 +12,7 @@ import (
 
 	"github.com/crikke/oi/pkg/commitlog"
 	"github.com/crikke/oi/pkg/memtree"
+	"github.com/crikke/oi/pkg/sstable"
 	"github.com/google/uuid"
 )
 
@@ -184,9 +185,13 @@ func (db *Database) writeToMemoryTree(m commitlog.Mutation) error {
 func (db *Database) Get(ctx context.Context, key []byte) ([]byte, error) {
 
 	value, ok := db.memtable.Get(key)
-
+	var err error
 	if !ok {
+		value, err = sstable.Get(db.configuration.Directory.Data, key)
 
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return value, nil

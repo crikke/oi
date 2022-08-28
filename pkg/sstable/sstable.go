@@ -35,17 +35,39 @@ func Get(dir string, key []byte) ([]byte, error) {
 	}
 
 	summary, err := os.Open(filepath.Join(dir, "summary.db"))
+	defer summary.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	return nil, nil
-}
+	se, err := getSummaryEntry(summary, key)
 
-func (s *SSTable) Close() {
-	s.index.Close()
-	s.data.Close()
-	s.data.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	ie, err := getIndexEntry(filepath.Join(dir, "index.db"), key, se.position)
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.Open(filepath.Join(dir, "data.db"))
+	defer data.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := data.Seek(ie.position, 0); err != nil {
+		return nil, err
+	}
+
+	value := make([]byte, ie.dataLength)
+	if _, err := data.Read(value); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }
 
 // calculate the checksum for the file, this will be stored somewhere and is used to compare the index & data file

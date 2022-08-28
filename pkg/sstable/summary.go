@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ type summaryEntry struct {
 	key    []byte
 	keyLen uint16
 	// position of the key in the index file
-	position uint64
+	position int64
 }
 
 func (se summaryEntry) MarshalBinary() ([]byte, error) {
@@ -29,10 +30,29 @@ func (se summaryEntry) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, se.keyLen+10)
 
 	binary.LittleEndian.PutUint16(buf[0:2], se.keyLen)
-	binary.LittleEndian.PutUint64(buf[2:10], se.position)
+	binary.LittleEndian.PutUint64(buf[2:10], uint64(se.position))
 	buf = append(buf[10:], se.key...)
 
 	return buf, nil
+}
+
+func (se *summaryEntry) readFrom(r io.Reader) error {
+
+	buf := make([]byte, 10)
+	_, err := r.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	se.keyLen = binary.LittleEndian.Uint16(buf[0:2])
+	se.position = int64(binary.LittleEndian.Uint64(buf[2:10]))
+	se.key = make([]byte, se.keyLen)
+
+	if _, err := r.Read(se.key); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func newSummary(index io.Reader, samplingSize int) (*summary, error) {
@@ -61,7 +81,7 @@ func newSummary(index io.Reader, samplingSize int) (*summary, error) {
 			se := summaryEntry{
 				key:      entry.key,
 				keyLen:   entry.keyLength,
-				position: uint64(pos),
+				position: int64(pos),
 			}
 
 			s.entries = append(s.entries, se)
@@ -97,13 +117,30 @@ func (s *summary) Save(dir string) error {
 	return f.Close()
 }
 
-func getSummaryEntry(dir string, key []byte) (summaryEntry, error) {
+// TODO: properly handle case when only 1 segment
+func getSummaryEntry(rd io.Reader, key []byte) (summaryEntry, error) {
 
-	f, err := os.Open(dir)
-	defer f.Close()
+	r := bufio.NewReader(rd)
 
-	if err != nil {
-		return summaryEntry{}, err
+	var prev *summaryEntry
+	for {
+		cur := &summaryEntry{}
+		if err := cur.readFrom(r); err != nil {
+			if errors.Is(err, io.EOF) && prev != nil {
+				return *prev, nil
+			}
+
+			return summaryEntry{}, err
+		}
+
+		if prev != nil {
+			if bytes.Compare(prev.key, key) == -1 && bytes.Compare(key, cur.key) == 1 {
+				return *prev, nil
+			}
+		}
+
+		prev = cur
+
 	}
 
 	return summaryEntry{}, nil
