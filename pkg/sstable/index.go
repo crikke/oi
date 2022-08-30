@@ -14,14 +14,42 @@ import (
 // this would make it faster since every entry offset is known and the summary can just take the entries needed
 // instead of reading the whole index
 // maybe should look into this in the future
-type index struct {
-	entries []indexEntry
-}
+type indexFile dataFile
 
 type indexEntry struct {
 	key       []byte
 	keyLength uint16
 	position  int64
+}
+
+func newIndexFile(path string) (*indexFile, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0660)
+
+	if err != nil {
+		return nil, err
+	}
+	w := bufio.NewWriter(f)
+
+	idxFile := &indexFile{
+		f: f,
+		w: w,
+	}
+	return idxFile, nil
+}
+
+func (df *indexFile) Close() error {
+
+	if err := df.w.Flush(); err != nil {
+		return err
+	}
+
+	return df.f.Close()
+}
+
+func (df *indexFile) insertData(r io.Reader) error {
+
+	buf := bufio.NewReader(r)
+
 }
 
 // TODO: this should be  MarshalBinary

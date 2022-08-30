@@ -6,12 +6,13 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/crikke/oi/pkg/memtree"
 )
 
 type dataFile struct {
-	entries []DataEntry
-	w       *bufio.Writer
-	f       *os.File
+	w *bufio.Writer
+	f *os.File
 }
 
 func (df *dataFile) Close() error {
@@ -32,16 +33,46 @@ func newDataFile(path string) (*dataFile, error) {
 	w := bufio.NewWriter(f)
 
 	df := &dataFile{
-		f:       f,
-		w:       w,
-		entries: make([]DataEntry, 0),
+		f: f,
+		w: w,
 	}
 	return df, nil
 }
 
-func (df *dataFile) append(de DataEntry) error {
+func (df *dataFile) appendRBtree(m memtree.RBTree) error {
 
-	// TODO: implement
+	stack := make([]*memtree.Node, 0)
+
+	current := m.Root
+	for len(stack) > 0 || current != nil {
+
+		if current != nil {
+
+			stack = append(stack, current)
+			current = current.Left
+		}
+
+		if current == nil {
+
+			el := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+
+			de := DataEntry{
+				key:   el.Key,
+				value: el.Value,
+				Header: &DataEntryHeader{
+					ValueLength: uint16(len(el.Value)),
+					KeyLength:   uint16(len(el.Key)),
+				},
+			}
+
+			if err := de.writeTo(df.w); err != nil {
+				return err
+			}
+			current = el.Right
+		}
+	}
+
 	return nil
 }
 
@@ -56,6 +87,23 @@ type DataEntryHeader struct {
 	DeletionTime time.Time
 	ValueLength  uint16
 	KeyLength    uint16
+}
+
+func (de DataEntry) writeTo(w io.Writer) error {
+
+	if err := binary.Write(w, binary.LittleEndian, de.Header); err != nil {
+		return err
+	}
+
+	if _, err := w.Write(de.key); err != nil {
+		return err
+	}
+
+	if _, err := w.Write(de.value); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (de *DataEntry) readFrom(r io.Reader) error {

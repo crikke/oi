@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package oi.sstable;
+
+
+message DataEntry {
+    string Key = 1;
+    repeated SimpleCell Value = 2;
+}
+// A cell is the holds the value for a given column on a row.
+// Each cell has a key and a value.
+//
+// There are 2 types of cells:
+// Simple which is only a key value pair
+// 
+// A complex cell can be either an Object or Collection which is specified by Type.
+
+
+// CellHeader is common for both Simple & Complex Cells.
+// TODO THIS IN FUTURE
+// FOR NOW ONLY IMPLEMENT SIMPLE CELL
+message CellHeader {
+    string Key = 1;
+    bool Deleted = 2;
+}
+
+message SimpleCell {
+    CellHeader Header = 1;
+    bytes Value = 2;
+}
+
+enum CellType {
+    CT_UNSPECIFIED = 0;
+   CT_STRING = 1;
+}

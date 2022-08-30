@@ -21,41 +21,10 @@ import (
 // this means that if a sstable is renamed, the order is changed and the data is not valid
 // so this needs to be fixed later on
 
-
-type TableEntry struct {
-
-}
-
-// index and summary have pretty much equal data structure
-
-// index depends on data file for position
-// summary depends on index for position 
-// 
-// Creation of new sstable:
-// create each file.
-// since SStable are immutable create or trunc existing files
-// 
-// for each file create a chan
-// when inserted into data: put data offset and key into indexChannel 
-// when inserted into index: put index offset and key into summaryCh
-
-
 type SSTable struct {
-	dir string
-	
-	entries int 
-	indexCh chan TableEntry
-	summaryCh chan TableEntry
-}
-
-type appendOnlyFile struct {
-	w io.Writer
-	f *os.File
-	writerCh chan []byte
-}
-
-func NewSSTable() {
-
+	index   *os.File
+	data    *os.File
+	summary io.Reader
 }
 
 // ErrKeyNotFound if key is not found in sstable
@@ -173,13 +142,11 @@ func New(dataDir string, m memtree.RBTree) error {
 		return err
 	}
 
-	// create data file
 	df, err := newDataFile(filepath.Join(sstableDir, "data.db"))
 	if err != nil {
 		return err
 	}
 
-	// append data to data file 
 	if err := df.appendRBtree(m); err != nil {
 		return err
 	}
@@ -188,11 +155,6 @@ func New(dataDir string, m memtree.RBTree) error {
 	if err := df.Close(); err != nil {
 		return err
 	}
-
-	// create index file from data file
-	if
-
-
 	return nil
 }
 
