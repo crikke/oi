@@ -1,10 +1,8 @@
 package sstable
 
 import (
-	"bytes"
 	"crypto/md5"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +10,16 @@ import (
 	"github.com/crikke/oi/pkg/bloom"
 	"github.com/crikke/oi/pkg/memtree"
 )
+
+// TODO: currently the data file only stores the value
+// the data file should instead store a data struct aswell as its length.
+// this would allow data file to work without the index file and creating the index file from the data file.
+//
+// currently the index and data file are created at the same time.
+
+// TODO: SStables are currently using name for ordering.
+// this means that if a sstable is renamed, the order is changed and the data is not valid
+// so this needs to be fixed later on
 
 type SSTable struct {
 	index   *os.File
@@ -22,7 +30,40 @@ type SSTable struct {
 // ErrKeyNotFound if key is not found in sstable
 var ErrKeyNotFound = errors.New("key not found in SSTable")
 
-func Get(dir string, key []byte) ([]byte, error) {
+// Get value.
+// When searching for key, it will search each sstable ordered from the most recent to oldest until key is found
+func Get(dataDir string, key []byte) ([]byte, error) {
+
+	dirEntries, err := os.ReadDir(dataDir)
+
+	if err != nil {
+		return nil, err
+	}
+	for i := len(dirEntries) - 1; i >= 0; i-- {
+
+		entry := dirEntries[i]
+
+		if !entry.IsDir() {
+			continue
+		}
+
+		value, err := getFromSStable(entry.Name(), key)
+		if err != nil {
+			if errors.Is(err, ErrKeyNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if value != nil {
+			return value, nil
+		}
+
+	}
+	return nil, nil
+}
+
+// TODO: handle checksum check
+func getFromSStable(dir string, key []byte) ([]byte, error) {
 
 	filter, err := bloom.Open(filepath.Join(dir, "bloom.db"))
 
@@ -58,16 +99,18 @@ func Get(dir string, key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if _, err := data.Seek(ie.position, 0); err != nil {
+	entry, err := getDataEntry(filepath.Join(dir, "data.db"), ie.position)
+
+	if err != nil {
 		return nil, err
 	}
 
-	value := make([]byte, ie.dataLength)
-	if _, err := data.Read(value); err != nil {
-		return nil, err
+	// TODO: compare checksum of data entry
+	if entry.Header.DeletionTime.IsZero() {
+		return nil, ErrKeyNotFound
 	}
 
-	return nil, nil
+	return entry.value, nil
 }
 
 // calculate the checksum for the file, this will be stored somewhere and is used to compare the index & data file
@@ -84,48 +127,52 @@ func checksum(r io.Reader) ([]byte, error) {
 }
 
 // creates a new SSTable at given path from a RBTree
-func New(name string, m memtree.RBTree) error {
+// The creation logic work by first creating the data file followed by the index file and then the summary file
+func New(dataDir string, m memtree.RBTree) error {
 
-	// assert that the files does not exist
-	if _, err := os.Stat(fmt.Sprintf("%s.data", name)); !errors.Is(err, os.ErrNotExist) {
-		return os.ErrExist
-	}
-
-	if _, err := os.Stat(fmt.Sprintf("%s.idx", name)); !errors.Is(err, os.ErrNotExist) {
-		return os.ErrExist
-	}
-
-	if _, err := os.Stat(fmt.Sprintf("%s.summary", name)); !errors.Is(err, os.ErrNotExist) {
-		return os.ErrExist
-	}
-
-	data, err := os.Create(fmt.Sprintf("%s.data", name))
+	dirEntries, err := os.ReadDir(dataDir)
 	if err != nil {
 		return err
 	}
-	defer data.Close()
 
-	idx, err := os.Create(fmt.Sprintf("%s.idx", name))
+	sstableDir := filepath.Join(dataDir, string(len(dirEntries)))
 
+	err = os.Mkdir(sstableDir, 0660)
 	if err != nil {
 		return err
 	}
-	// todo
 
-	//summary, err := os.Create(fmt.Sprintf("%s.summary", name))
-	// if err != nil {
-	//	return err
-	// }
+	df, err := newDataFile(filepath.Join(sstableDir, "data.db"))
+	if err != nil {
+		return err
+	}
 
-	createSSTable(idx, data, m)
+	traverseRBTree(m, func(n *memtree.Node) error {
 
+		de := DataEntry{
+			key:   n.Key,
+			value: n.Value,
+			Header: &DataEntryHeader{
+				ValueLength: uint16(len(n.Value)),
+				KeyLength:   uint16(len(n.Key)),
+			},
+		}
+
+		if err := df.append(de); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err := df.Close(); err != nil {
+		return err
+	}
 	return nil
 }
 
 // traverses the memtree and wrties the data to the files
-func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) error {
+func traverseRBTree(m memtree.RBTree, callback func(n *memtree.Node) error) error {
 
-	s := &index{}
 	stack := make([]*memtree.Node, 0)
 
 	current := m.Root
@@ -138,12 +185,11 @@ func createSSTable(iw io.Writer, db io.Writer, m memtree.RBTree) error {
 		}
 
 		if current == nil {
-			// pop:w
 
 			el := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 
-			if err := s.processNode(iw, db, el); err != nil {
+			if err := callback(el); err != nil {
 				return err
 			}
 			current = el.Right
@@ -179,59 +225,4 @@ func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
 	i.length += uint32(l)
 
 	return nil
-}
-
-func (s SSTable) Get(key []byte) ([]byte, error) {
-
-	length := int64(-1)
-	// todo length should be blocksize from summary file
-	entry, err := s.scan(0, length, key)
-
-	if err != nil {
-		return nil, err
-	}
-
-	val := make([]byte, entry.keyLength)
-	if _, err := s.data.ReadAt(val, int64(entry.position)); err != nil {
-		return nil, err
-	}
-
-	return val, nil
-}
-
-// searches the index for key starting at offset.
-// It will continue search until end or bytes read > length, in which key does not exist
-// if length is -1 it will keep scanning until EOF
-
-func (s SSTable) scan(offset, length int64, key []byte) (indexEntry, error) {
-
-	if _, err := s.index.Seek(offset, 0); err != nil {
-		return indexEntry{}, err
-	}
-
-	bytesRead := int64(0)
-	for {
-
-		if length != -1 && bytesRead > length {
-			break
-		}
-
-		e := &indexEntry{}
-
-		n, err := decodeIndexEntry(s.index, e)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return indexEntry{}, err
-		}
-
-		bytesRead += int64(n)
-
-		if bytes.Equal(e.key, key) {
-			return *e, nil
-		}
-	}
-
-	return indexEntry{}, errors.New("not found")
 }

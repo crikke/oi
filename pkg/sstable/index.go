@@ -22,18 +22,15 @@ type indexEntry struct {
 	key       []byte
 	keyLength uint16
 	position  int64
-	// length of value in data file
-	dataLength uint16
 }
 
 // TODO: this should be  MarshalBinary
 func encodeIndexEntry(w io.Writer, e indexEntry) error {
 
-	buf := make([]byte, 10)
+	buf := make([]byte, 8)
 
 	binary.LittleEndian.PutUint16(buf[0:2], e.keyLength)
 	binary.LittleEndian.PutUint64(buf[2:8], uint64(e.position))
-	binary.LittleEndian.PutUint16(buf[8:10], e.dataLength)
 
 	buf = append(buf, e.key...)
 
@@ -81,7 +78,7 @@ func getIndexEntry(dir string, key []byte, offset int64) (indexEntry, error) {
 
 func decodeIndexEntry(r io.Reader, e *indexEntry) (int, error) {
 
-	buf := make([]byte, 10)
+	buf := make([]byte, 8)
 	n := 0
 	ln, err := r.Read(buf)
 	n += ln
@@ -90,7 +87,6 @@ func decodeIndexEntry(r io.Reader, e *indexEntry) (int, error) {
 	}
 	e.keyLength = binary.LittleEndian.Uint16(buf[0:2])
 	e.position = int64(binary.LittleEndian.Uint64(buf[2:8]))
-	e.dataLength = binary.LittleEndian.Uint16(buf[8:10])
 
 	key := make([]byte, e.keyLength)
 

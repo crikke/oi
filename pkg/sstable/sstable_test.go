@@ -49,7 +49,7 @@ func TestCreateSSTableIndex(t *testing.T) {
 	iw := &bytes.Buffer{}
 	data := &bytes.Buffer{}
 
-	err := createSSTable(iw, data, rbt)
+	err := traverseRBTree(iw, data, rbt)
 	assert.NoError(t, err)
 
 	// bytes are in little endian order
@@ -98,7 +98,7 @@ func TestDecodeSSTable(t *testing.T) {
 	}
 	defer os.Remove(idx.Name())
 
-	err = createSSTable(idx, data, rbt)
+	err = traverseRBTree(idx, data, rbt)
 	assert.NoError(t, err)
 
 	sst, err := Open(fmt.Sprintf("%s", n))
