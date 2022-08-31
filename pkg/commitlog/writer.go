@@ -6,6 +6,10 @@ import (
 	"hash/crc32"
 	"os"
 	"sync"
+
+	pb "github.com/crikke/oi/proto-gen/data"
+
+	"google.golang.org/protobuf/proto"
 )
 
 type Writer struct {
@@ -16,15 +20,15 @@ type Writer struct {
 
 	// size of current segment
 	size           int32
-	writerChannel  chan Mutation
+	writerChannel  chan *pb.Mutation
 	logDir         string
 	maxSegmentSize int
 	// CallbackFn is called after the writeloop has successfully written the record.
 	// This is used to insert the mutation into the memtree
-	callbackFn func(m Mutation) error
+	callbackFn func(m *pb.Mutation) error
 }
 
-func NewWriter(ctx context.Context, logDir string, maxSegmentSize int, callbackFn func(m Mutation) error) (*Writer, error) {
+func NewWriter(ctx context.Context, logDir string, maxSegmentSize int, callbackFn func(m *pb.Mutation) error) (*Writer, error) {
 
 	f, err := GetLatestSegment(logDir, maxSegmentSize)
 
@@ -50,7 +54,7 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int, callbackF
 
 	w := &Writer{
 		mu:             sync.Mutex{},
-		writerChannel:  make(chan Mutation),
+		writerChannel:  make(chan *pb.Mutation),
 		file:           f,
 		size:           int32(fi.Size()),
 		logDir:         logDir,
@@ -64,7 +68,7 @@ func NewWriter(ctx context.Context, logDir string, maxSegmentSize int, callbackF
 	return w, nil
 }
 
-func (w *Writer) Write(m Mutation) error {
+func (w *Writer) Write(m *pb.Mutation) error {
 
 	w.writerChannel <- m
 	return nil
@@ -77,15 +81,14 @@ func (w *Writer) writeLoop(ctx context.Context) error {
 
 		case m := <-w.writerChannel:
 
-			data, err := m.MarshalBinary()
+			data, err := proto.Marshal(m)
 			if err != nil {
 				return err
 			}
 
-			r := Record{
-				Data:       data,
-				Crc:        crc32.ChecksumIEEE(data),
-				DataLength: uint32(len(data)),
+			r := pb.Record{
+				Data:     m,
+				Checksum: crc32.ChecksumIEEE(data),
 			}
 
 			w.mu.Lock()

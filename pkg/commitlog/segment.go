@@ -2,13 +2,16 @@ package commitlog
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/crikke/oi/pkg/protoutil"
+	pb "github.com/crikke/oi/proto-gen/data"
+	"github.com/golang/protobuf/proto"
 )
 
 const (
@@ -21,9 +24,8 @@ const (
 // This must be enforced in order to guarantee that the records will be replayed correctly and not
 // corrupt state.
 
-func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
-
-	records := make([]Record, 0)
+func ReadLogSegment(ctx context.Context, r io.Reader) ([]*pb.Record, error) {
+	records := make([]*pb.Record, 0)
 	loop := true
 	for loop {
 		select {
@@ -31,10 +33,8 @@ func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 			break
 		default:
 
-			r := Record{}
-
-			lsn := make([]byte, 4)
-			if _, err := f.Read(lsn); err != nil {
+			pe := &protoutil.ProtoEntry{}
+			if _, err := pe.ReadFrom(r); err != nil {
 
 				if errors.Is(err, io.EOF) {
 					loop = false
@@ -42,33 +42,13 @@ func ReadLogSegment(ctx context.Context, f io.Reader) ([]Record, error) {
 				}
 				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
 			}
+			record := &pb.Record{}
 
-			r.LSN = binary.LittleEndian.Uint64(lsn)
-
-			dataLen := make([]byte, 4)
-			if _, err := f.Read(dataLen); err != nil {
-				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
+			if err := proto.Unmarshal(pe.Data, record); err != nil {
+				return nil, err
 			}
 
-			r.DataLength = binary.LittleEndian.Uint32(dataLen)
-
-			crc := make([]byte, 4)
-			if _, err := f.Read(crc); err != nil {
-
-				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
-			}
-
-			r.Crc = binary.LittleEndian.Uint32(crc)
-
-			data := make([]byte, r.DataLength)
-
-			if _, err := f.Read(data); err != nil {
-				return nil, fmt.Errorf("[ReadLogSegment] fatal: %w", err)
-			}
-
-			r.Data = data
-
-			records = append(records, r)
+			records = append(records, record)
 
 		}
 

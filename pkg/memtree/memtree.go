@@ -9,7 +9,7 @@ type Configuration struct {
 	MaxSize int
 }
 
-const ErrMaxSizeReached = "maximum size reached"
+var ErrMaxSizeReached = errors.New("maximum size reached")
 
 // A memory tree stores the lasted writes in memory.
 // Once the tree is full, the data is written to disk as a SSTable and the tree is flushed
@@ -36,7 +36,7 @@ func NewMemtree(maxSize int) *Memtree {
 func (m *Memtree) Put(key, value []byte) error {
 
 	if m.Size+len(value)+len(key) > m.MaxSize {
-		return errors.New(ErrMaxSizeReached)
+		return ErrMaxSizeReached
 	}
 
 	m.Size += len(key) + len(value)

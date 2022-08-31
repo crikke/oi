@@ -13,6 +13,7 @@ import (
 	"github.com/crikke/oi/pkg/commitlog"
 	"github.com/crikke/oi/pkg/memtree"
 	"github.com/crikke/oi/pkg/sstable"
+	pb "github.com/crikke/oi/proto-gen/data"
 	"github.com/google/uuid"
 )
 
@@ -174,12 +175,24 @@ func (d *Database) Stop() error {
 
 func (db *Database) Put(ctx context.Context, key, value []byte) error {
 
-	m := commitlog.NewMutation(key, value, false)
+	m := &pb.Mutation{
+		Key:       key,
+		Value:     value,
+		Tombstone: nil,
+	}
 	return db.writer.Write(m)
 }
 
-func (db *Database) writeToMemoryTree(m commitlog.Mutation) error {
-	return db.memtable.Put(m.Key, m.Value)
+func (db *Database) writeToMemoryTree(m *commitlog.Mutation) error {
+	err := db.memtable.Put(m.Key, m.Value)
+
+	if !errors.Is(err, memtree.ErrMaxSizeReached) {
+		return err
+	}
+
+	sst := sstable.NewSSTable(db.configuration.Directory.Data)
+
+	return nil
 }
 
 func (db *Database) Get(ctx context.Context, key []byte) ([]byte, error) {

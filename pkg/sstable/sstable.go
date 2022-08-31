@@ -1,7 +1,9 @@
 package sstable
 
 import (
+	"bufio"
 	"crypto/md5"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +11,8 @@ import (
 
 	"github.com/crikke/oi/pkg/bloom"
 	"github.com/crikke/oi/pkg/memtree"
+	pb "github.com/crikke/oi/proto-gen/data"
+	"google.golang.org/protobuf/proto"
 )
 
 // TODO: currently the data file only stores the value
@@ -23,8 +27,9 @@ import (
 
 
 type TableEntry struct {
-
+	r pb.Record
 }
+
 
 // index and summary have pretty much equal data structure
 
@@ -39,23 +44,160 @@ type TableEntry struct {
 // when inserted into data: put data offset and key into indexChannel 
 // when inserted into index: put index offset and key into summaryCh
 
+type protoEntry struct {
+	data []byte
+	dataLen uint32
+}
+
+func (p protoEntry) MarshalBinary() ([]byte, error) {
+
+	buf := make([]byte, p.dataLen + 4)
+	binary.LittleEndian.PutUint32(buf[0:4], p.dataLen)
+	buf = append(buf[4:], p.data...)
+
+	return buf, nil
+}
 
 type SSTable struct {
 	dir string
 	
 	entries int 
-	indexCh chan TableEntry
-	summaryCh chan TableEntry
+	data appendOnlyFile
+	index appendOnlyFile
+	summary appendOnlyFile
+	done chan struct {}
+	sampleSize int
 }
 
 type appendOnlyFile struct {
-	w io.Writer
+	w bufio.Writer
 	f *os.File
-	writerCh chan []byte
+	writerCh chan protoEntry
+	done chan struct{}
+	size uint32
 }
 
-func NewSSTable() {
+func newAppendOnlyFile(path string, done chan struct{}) *appendOnlyFile {
 
+	aof := &appendOnlyFile{
+		done: done,
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+
+	aof.f = f
+	aof.w = bufio.NewWriter(f)
+}
+
+func (a* appendOnlyFile) append(p protoEntry) error {
+
+	a.writerCh <- p
+	return nil 
+}
+
+func (a *appendOnlyFile) writerLoop() {
+
+	for {
+		select
+		{
+		case <- a.done:
+			a.w.Flush()
+			a.f.Close()
+			return
+		case p := <-a.writerCh: 
+			b, _ := p.MarshalBinary()
+			n, err := a.w.Write(b)
+			if err != nil {
+				panic(err)
+			}
+
+			a.size += n
+		}
+	}
+}
+
+func NewSSTable(dir string) *SSTable {
+
+	s := *&SSTable{
+		done: make(chan struct{}),
+	}
+	s.data = *newAppendOnlyFile(filepath.Join(dir, "data.db"), s.done)	
+	s.index = *newAppendOnlyFile(filepath.Join(dir, "index.db"), s.done)	
+	s.summary = *newAppendOnlyFile(filepath.Join(dir, "summary.db"), s.done)	
+}
+
+func (s *SSTable) Append(r pb.Record) error{
+	data, err := proto.Marshal(r)
+
+	if err != nil {
+		return err
+	}
+
+	p := protoEntry{
+		data:data,
+		dataLen: len(data),
+	}
+	
+	pos := s.data.size
+	if err := s.data.append(p); err != nil {
+		return err
+	}
+	
+	indexEntry := pb.IndexEntry{
+		Key:r.Key,
+		Position: pos,
+	}
+	
+	
+	data, err := proto.Marshal(&indexEntry)
+	if err != nil {
+		return err
+	}
+
+	p = protoEntry{
+		data:data,
+		dataLen: len(data),
+	}
+
+	if err := s.index.append(p); err != nil {
+		return err
+	}
+	
+	if s.entries % s.sampleSize == 0 {
+		pos = s.index.size
+
+		summaryEntry := pb.IndexEntry{
+			Key:r.Key,
+			Position: pos,
+		}
+
+		data, err := proto.Marshal(&summaryEntry)
+		if err != nil {
+			return err
+		}
+
+		p = protoEntry{
+			data:data,
+			dataLen: len(data),
+		}
+
+		if err := s.summary.append(p); err != nil {
+			return err
+		}
+	
+
+	}
+
+	s.entries++
+}
+
+func (s *SSTable) Done() error {
+
+	s.done <- struct{}{}
+	return nil
 }
 
 // ErrKeyNotFound if key is not found in sstable
