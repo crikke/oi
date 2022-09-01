@@ -1,4 +1,4 @@
-package sstable
+package lsmtree
 
 import (
 	"bytes"

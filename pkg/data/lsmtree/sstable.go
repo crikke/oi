@@ -1,4 +1,4 @@
-package sstable
+package lsmtree
 
 import (
 	"bufio"
@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/crikke/oi/pkg/bloom"
-	"github.com/crikke/oi/pkg/memtree"
-	"github.com/crikke/oi/pkg/protoutil"
+	"github.com/crikke/oi/pkg/data"
+	protoutil "github.com/crikke/oi/pkg/data"
 	pb "github.com/crikke/oi/proto-gen/data"
 	"google.golang.org/protobuf/proto"
 )
@@ -74,7 +74,7 @@ func newAppendOnlyFile(path string, done chan struct{}) *appendOnlyFile {
 	return aof
 }
 
-func (a *appendOnlyFile) append(p protoutil.ProtoEntry) error {
+func (a *appendOnlyFile) append(p data.ProtoEntry) error {
 
 	a.writerCh <- p
 	return nil
@@ -112,7 +112,7 @@ func NewSSTable(dir string) *SSTable {
 	return s
 }
 
-func (s *SSTable) Append(r *pb.Record) error {
+func (s *SSTable) Append(r *pb.Mutation) error {
 	data, err := proto.Marshal(r)
 
 	if err != nil {
@@ -130,7 +130,7 @@ func (s *SSTable) Append(r *pb.Record) error {
 	}
 
 	indexEntry := pb.IndexEntry{
-		Key:      r.Data.Key,
+		Key:      r.Key,
 		Position: uint64(pos),
 	}
 
@@ -152,7 +152,7 @@ func (s *SSTable) Append(r *pb.Record) error {
 		pos = s.index.size
 
 		summaryEntry := pb.IndexEntry{
-			Key:      r.Data.Key,
+			Key:      r.Key,
 			Position: uint64(pos),
 		}
 
@@ -279,32 +279,4 @@ func checksum(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return hash.Sum(nil), nil
-}
-
-func (i *index) processNode(iw io.Writer, db io.Writer, n *memtree.Node) error {
-	l, err := db.Write(n.Value)
-
-	if err != nil {
-		return err
-	}
-
-	if err != nil {
-		return err
-	}
-
-	e := indexEntry{
-		position:   i.length,
-		key:        []byte(n.Key),
-		keyLength:  uint16(len(n.Key)),
-		dataLength: uint16(l),
-	}
-
-	if err = encodeIndexEntry(iw, e); err != nil {
-		return err
-	}
-
-	// increase size of sstable to get next entry position
-	i.length += uint32(l)
-
-	return nil
 }

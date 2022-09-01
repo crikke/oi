@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/crikke/oi/pkg/protoutil"
+	"github.com/crikke/oi/pkg/data"
 	pb "github.com/crikke/oi/proto-gen/data"
 	"github.com/golang/protobuf/proto"
 )
@@ -33,7 +33,7 @@ func ReadLogSegment(ctx context.Context, r io.Reader) ([]*pb.Record, error) {
 			break
 		default:
 
-			pe := &protoutil.ProtoEntry{}
+			pe := &data.ProtoEntry{}
 			if _, err := pe.ReadFrom(r); err != nil {
 
 				if errors.Is(err, io.EOF) {

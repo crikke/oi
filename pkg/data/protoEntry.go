@@ -1,4 +1,4 @@
-package protoutil
+package data
 
 import (
 	"encoding/binary"

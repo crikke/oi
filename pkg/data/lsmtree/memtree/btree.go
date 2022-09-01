@@ -1,6 +1,10 @@
 package memtree
 
-import "bytes"
+import (
+	"bytes"
+
+	pb "github.com/crikke/oi/proto-gen/data"
+)
 
 type color bool
 
@@ -14,26 +18,27 @@ type Node struct {
 	Left      *Node
 	Right     *Node
 	parent    *Node
-	Key       []byte
-	Value     []byte
+	Data      *pb.Mutation
 	nodecolor color
 }
 
+func (t RBTree) Get(key []byte) (*pb.Mutation, error) {
+	return nil, nil
+}
+
 // When writing a entry, in addition to storing it to disk, index the location of the key
-func (t *RBTree) Insert(key, value []byte) {
+func (t *RBTree) Insert(m *pb.Mutation) {
 
 	if t.Root == nil {
 		t.Root = &Node{
-			Key:       key,
 			nodecolor: black,
-			Value:     value,
+			Data:      m,
 		}
 		return
 	}
 
 	newNode := &Node{
-		Key:       key,
-		Value:     value,
+		Data:      m,
 		nodecolor: red,
 	}
 	n := t.Root
@@ -42,7 +47,7 @@ func (t *RBTree) Insert(key, value []byte) {
 	loop := true
 	for loop {
 		parent = n
-		switch bytes.Compare(key, n.Key) {
+		switch bytes.Compare(m.Key, n.Data.Key) {
 
 		case -1:
 			if n.Left != nil {

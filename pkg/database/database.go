@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/crikke/oi/pkg/commitlog"
-	"github.com/crikke/oi/pkg/memtree"
-	"github.com/crikke/oi/pkg/sstable"
+	"github.com/crikke/oi/pkg/data/commitlog"
+	"github.com/crikke/oi/pkg/data/lsmtree"
+	"github.com/crikke/oi/pkg/data/lsmtree/memtree"
 	pb "github.com/crikke/oi/proto-gen/data"
 	"github.com/google/uuid"
 )
@@ -41,7 +41,7 @@ type Configuration struct {
 }
 
 type Database struct {
-	memtable       *memtree.Memtree
+	lsmTree        *lsmtree.LSMTree
 	configuration  Configuration
 	Descriptor     *Descriptor
 	writer         *commitlog.Writer
@@ -114,9 +114,14 @@ func (db *Database) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	ensureDirExists(fmt.Sprintf("%s/%s", db.configuration.Directory.Log, db.Descriptor.Name))
 	ensureDirExists(fmt.Sprintf("%s/%s", db.configuration.Directory.Data, db.Descriptor.Name))
-	db.memtable = memtree.NewMemtree(db.configuration.Memtree.MaxSize)
+
+	db.lsmTree = lsmtree.NewLSMTree(&lsmtree.Configuration{
+		DataDir:        db.configuration.Directory.Data,
+		MemtreeMaxSize: uint32(db.configuration.Memtree.MaxSize),
+	})
+
 	db.cancelFunc = cancel
-	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize), db.writeToMemoryTree)
+	w, err := commitlog.NewWriter(ctx, db.configuration.Directory.Log, int(db.configuration.Commitlog.SegmentSize), db.lsmTree.Append)
 
 	if err != nil {
 		return fmt.Errorf("[Init] Fatal: %w", err)
@@ -183,29 +188,9 @@ func (db *Database) Put(ctx context.Context, key, value []byte) error {
 	return db.writer.Write(m)
 }
 
-func (db *Database) writeToMemoryTree(m *commitlog.Mutation) error {
-	err := db.memtable.Put(m.Key, m.Value)
-
-	if !errors.Is(err, memtree.ErrMaxSizeReached) {
-		return err
-	}
-
-	sst := sstable.NewSSTable(db.configuration.Directory.Data)
-
-	return nil
-}
-
 func (db *Database) Get(ctx context.Context, key []byte) ([]byte, error) {
 
-	value, ok := db.memtable.Get(key)
-	var err error
-	if !ok {
-		value, err = sstable.Get(db.configuration.Directory.Data, key)
-
-		if err != nil {
-			return nil, err
-		}
-	}
+	value, err := db.lsmTree.Get(key)
 
 	return value, nil
 }
